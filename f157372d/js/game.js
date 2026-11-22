@@ -256,6 +256,7 @@ function deserializeWorld(data){
   if(migrated)seedExpansion();
   if(!(data.biomesV>=2)){const nb=ensureNewBiomes();W.migratedBiomes=nb}
   else W.migratedBiomes=null;
+  repairAnimalOceanPositions();
   W.dominantBiome=dominantBiomeId(W.cells);
   teachBoards();
   let maxId=0;

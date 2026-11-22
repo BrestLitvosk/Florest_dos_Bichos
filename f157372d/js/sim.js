@@ -32,6 +32,7 @@ const EXTRA_MOUNTAINS=[
   {x:-206,z:-176,r:34,h:16},{x:212,z:-150,r:30,h:14},{x:-198,z:196,r:32,h:15},{x:206,z:186,r:28,h:12},
 ];
 const MOUNTAINS=BASE_MOUNTAINS.slice();
+let LAND_MOUNTAINS=MOUNTAINS.slice();
 const BASE_PONDS=[
   {x:-30,z:26,r:9},{x:34,z:-34,r:7},{x:56,z:46,r:11},{x:-52,z:-58,r:9},
   // pântano alagado no sul do mapa maior
@@ -86,7 +87,7 @@ function biomeRegionAt(x,z){
 }
 function makeOceanZone(seed,biomes){
   RIVER_MOUTH=null;
-  if(!(biomes||[]).includes(10)){OCEAN_ZONE=null;return}
+  if(!(biomes||[]).includes(10)){OCEAN_ZONE=null;updateLandMountains();return}
   const rng=mulberry32(((seed>>>0)^0xc2b2ae35)>>>0);
   OCEAN_ZONE={side:['west','east','north','south'][Math.floor(rng()*4)],phase:rng()*TAU};
   if(OCEAN_ZONE.side==='west'||OCEAN_ZONE.side==='east'){
@@ -96,6 +97,7 @@ function makeOceanZone(seed,biomes){
     const sourceX=riverX(z);
     RIVER_MOUTH={z,minX:Math.min(sourceX,mouthX),maxX:Math.max(sourceX,mouthX)};
   }
+  updateLandMountains();
 }
 function riverClosestPoint(x,z){
   let point={x:riverX(z),z};
@@ -132,6 +134,20 @@ function coastDistance(x,z){
   if(side==='north')return z-boundary;
   return -boundary-z;
 }
+function updateLandMountains(){
+  LAND_MOUNTAINS=MOUNTAINS.filter(m=>!OCEAN_ZONE||
+    (!isOcean(m.x,m.z)&&coastDistance(m.x,m.z)>m.r+18));
+}
+function oceanMoveAllowed(marine,x,z,nextX,nextZ){
+  if(!OCEAN_ZONE)return true;
+  const fromOcean=isOcean(x,z),nextOcean=isOcean(nextX,nextZ);
+  if(marine){
+    if(fromOcean)return nextOcean;
+    return coastDistance(nextX,nextZ)<coastDistance(x,z);
+  }
+  if(!fromOcean)return !nextOcean;
+  return coastDistance(nextX,nextZ)>coastDistance(x,z);
+}
 function oceanReturnPoint(x,z){
   if(!OCEAN_ZONE)return null;
   const boundary=oceanBoundaryAt(x,z),margin=7;
@@ -147,6 +163,18 @@ function landReturnPoint(x,z){
   if(OCEAN_ZONE.side==='east')return {x:-boundary-margin,z};
   if(OCEAN_ZONE.side==='north')return {x,z:boundary+margin};
   return {x,z:-boundary-margin};
+}
+function repairAnimalOceanPositions(){
+  if(!W||!OCEAN_ZONE)return;
+  for(const a of W.animals){
+    if(a.taken)continue;
+    const inOcean=isOcean(a.x,a.z);
+    if(!!a.sp.marine===inOcean)continue;
+    const target=a.sp.marine?oceanReturnPoint(a.x,a.z):landReturnPoint(a.x,a.z);
+    if(!target)continue;
+    a.x=target.x;a.z=target.z;a.y=hgt(a.x,a.z);
+    a.plan=null;a.cur=null;a.project=null;a.idle=0;a.state='idle';a.oxygen=1;
+  }
 }
 function makeBiomeRegions(seed,biomes){
   const options=[...new Set((biomes||[]).filter(id=>[0,1,2,4,5,6,8,9].includes(id)))];
@@ -207,7 +235,7 @@ function buildPonds(){
 }
 function mountH(x,z){
   let m=0;
-  for(const p of MOUNTAINS){
+  for(const p of LAND_MOUNTAINS){
     const d=Math.hypot(x-p.x,z-p.z);
     if(d<p.r){const t=1-d/p.r;m=Math.max(m,p.h*t*t*(1+.06*Math.sin(x*.55)*Math.cos(z*.47)))}
   }
@@ -318,6 +346,7 @@ function applyWorldConfig(cfg){
   BIOME_REGIONS=null;
   OCEAN_ZONE=null;
   RIVER_MOUTH=null;
+  updateLandMountains();
   buildPonds();
   return CFG;
 }
@@ -819,7 +848,7 @@ function placeRuins(){
 
 /* serra: cavernas e veios de minério nas encostas */
 function placeMountainFeatures(){
-  for(const m of MOUNTAINS){
+  for(const m of LAND_MOUNTAINS){
     const an=Math.atan2(-m.z,-m.x),baseR=m.r*.48;
     const cx=m.x+Math.cos(an)*baseR,cz=m.z+Math.sin(an)*baseR;
     if(!W.things.some(t=>!t.gone&&t.kind==='caverna'&&Math.hypot(t.x-cx,t.z-cz)<9)){
@@ -1858,7 +1887,8 @@ function maybeStartRecipeProject(a){
 
 /* =====================  EXECUÇÃO  ===================== */
 function nearestBlockedFix(a){
-  // Águas e costa são atravessáveis; a necessidade de respirar guia o retorno ao habitat.
+  const originX=a.x,originZ=a.z;
+  // Mantém cada bicho no habitat mesmo quando colisões deslocam sua posição.
   for(const t of W.things){if(t.gone)continue;if(t.kind==='arvore'||t.kind==='pinheiro'||t.kind==='computador'||t.kind==='mural'||t.kind==='quadro'||t.kind==='totem'){
     const rad=t.kind==='computador'?1.7:t.kind==='mural'?1.8:t.kind==='quadro'?1.3:t.kind==='totem'?1.1:.75;const d=Math.hypot(a.x-t.x,a.z-t.z);
     if(d<rad){const an=Math.atan2(a.z-t.z,a.x-t.x);a.x=t.x+Math.cos(an)*rad;a.z=t.z+Math.sin(an)*rad}}}
@@ -1876,6 +1906,7 @@ function nearestBlockedFix(a){
   // Separação entre bichos: impede que modelos reais passem uns por cima dos outros.
   for(const other of W.animals){
     if(other===a||other.gone)continue;
+    const otherX=other.x,otherZ=other.z;
     const dx=a.x-other.x,dz=a.z-other.z;
     const d=Math.hypot(dx,dz);
     const min=animalRadius(a.sp)+animalRadius(other.sp);
@@ -1884,10 +1915,12 @@ function nearestBlockedFix(a){
       const nx=Math.cos(angle),nz=Math.sin(angle),push=(min-d)*.6;
       a.x+=nx*push;a.z+=nz*push;
       other.x-=nx*push*.35;other.z-=nz*push*.35;
+      if(!oceanMoveAllowed(!!other.sp.marine,otherX,otherZ,other.x,other.z)){other.x=otherX;other.z=otherZ}
     }
   }
   a.x=clamp(a.x,-(HALF-1.5),HALF-1.5);a.z=clamp(a.z,-(HALF-1.5),HALF-1.5);
   a.x=clamp(a.x,-(HALF-1.5),HALF-1.5);a.z=clamp(a.z,-(HALF-1.5),HALF-1.5);
+  if(!oceanMoveAllowed(!!a.sp.marine,originX,originZ,a.x,a.z)){a.x=originX;a.z=originZ}
 }
 function curSpeed(a){
   let s=a.sp.speed*(1-.15*(1-daylight()))*(a.n.energia<.2?.7:1);
@@ -1958,7 +1991,9 @@ function runPlan(a,dt){
         }
       }
       const sp=curSpeed(a)*dt;
-      a.x+=Math.cos(ang)*sp;a.z+=Math.sin(ang)*sp;
+      const fromX=a.x,fromZ=a.z;
+      const nextX=fromX+Math.cos(ang)*sp,nextZ=fromZ+Math.sin(ang)*sp;
+      if(oceanMoveAllowed(!!a.sp.marine,fromX,fromZ,nextX,nextZ)){a.x=nextX;a.z=nextZ}
       const ty=Math.atan2(dx,dz);let dy=ty-a.yaw;while(dy>Math.PI)dy-=TAU;while(dy<-Math.PI)dy+=TAU;a.yaw+=dy*Math.min(1,dt*8);
       a.walk+=sp*1.8;a.state='move';
       nearestBlockedFix(a);
@@ -3458,7 +3493,8 @@ function updateWolves(dt){
     if(W.crisis.phase==='retreat'){
       const tr=W.tribes[0];const tx=tr?tr.center.x:0,tz=tr?tr.center.z:0;
       const an=Math.atan2(w.z-tz,w.x-tx);w.yaw=an;
-      w.x+=Math.cos(an)*3.6*dt;w.z+=Math.sin(an)*3.6*dt;
+      const nextX=w.x+Math.cos(an)*3.6*dt,nextZ=w.z+Math.sin(an)*3.6*dt;
+      if(oceanMoveAllowed(false,w.x,w.z,nextX,nextZ)){w.x=nextX;w.z=nextZ}
       if(Math.abs(w.x)>HALF-6||Math.abs(w.z)>HALF-6)w.gone=true;
       continue;
     }
@@ -3478,7 +3514,8 @@ function updateWolves(dt){
       const dx=w.tx-w.x,dz=w.tz-w.z,d=Math.hypot(dx,dz);
       if(d>.8){
         const an=Math.atan2(dz,dx);w.yaw=an;const sp=3.4*dt;
-        w.x+=Math.cos(an)*sp;w.z+=Math.sin(an)*sp;
+        const nextX=w.x+Math.cos(an)*sp,nextZ=w.z+Math.sin(an)*sp;
+        if(oceanMoveAllowed(false,w.x,w.z,nextX,nextZ)){w.x=nextX;w.z=nextZ}
       }else if(w.eatCd<=0)wolfSteal(w);
     }
   }
