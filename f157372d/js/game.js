@@ -246,6 +246,35 @@ function saveDateStr(ts){
 
 /* ---------------- lobby de novo mundo ---------------- */
 const LOBBY_BIOMES=[[0,'floresta'],[2,'savana seca'],[4,'taiga'],[5,'pantanal'],[6,'pântano'],[8,'deserto'],[9,'cerrado']];
+function showTutorialPrompt(){
+  try{if(localStorage.getItem('florestaTutorial.v1'))return}catch(err){}
+  const prompt=document.getElementById('tutorialPrompt');
+  if(prompt)prompt.classList.remove('hide');
+}
+function initTutorial(){
+  const prompt=document.getElementById('tutorialPrompt'),steps=document.getElementById('tutorialSteps');
+  if(!prompt||!steps)return;
+  const yes=document.getElementById('tutorialYes'),no=document.getElementById('tutorialNo');
+  const close=document.getElementById('tutorialClose'),prev=document.getElementById('tutorialPrev'),next=document.getElementById('tutorialNext');
+  const title=document.getElementById('tutorialTitle'),text=document.getElementById('tutorialText');
+  const pages=[
+    ['1 · escolha um bicho','Toque ou clique em um bicho para ver seus desejos e pensamentos.'],
+    ['2 · controle a câmera','Arraste para girar. Use dois dedos para mover e afastar ou aproximar.'],
+    ['3 · explore os painéis','Abra cultura, bichos, lobos e música pela barra superior.'],
+  ];
+  let page=0;
+  const mark=()=>{try{localStorage.setItem('florestaTutorial.v1','chosen')}catch(err){}}
+  const render=()=>{
+    title.textContent=pages[page][0];text.textContent=pages[page][1];prev.disabled=page===0;
+    next.textContent=page===pages.length-1?'entendi':'próximo';
+    [...steps.querySelectorAll('.tutorialDots span')].forEach((dot,i)=>dot.classList.toggle('on',i===page));
+  };
+  yes.onclick=()=>{prompt.classList.add('hide');steps.classList.remove('hide');mark();page=0;render()};
+  no.onclick=()=>{prompt.classList.add('hide');mark()};
+  close.onclick=()=>{steps.classList.add('hide')};
+  prev.onclick=()=>{if(page>0){page--;render()}};
+  next.onclick=()=>{if(page<pages.length-1){page++;render()}else steps.classList.add('hide')};
+}
 function openLobby(els,mode){
   const $=s=>document.querySelector(s);
   const lobby=$('#lobby'),specWrap=$('#lobbySpecies'),biomeWrap=$('#lobbyBiomes'),sizeWrap=$('#lobbySize');
@@ -311,9 +340,14 @@ function openLobby(els,mode){
     };
     saveCfg(cfg);applyWorldConfig(cfg);state.size=cfg.size;
     lobby.classList.add('hide');
-    if(mode==='first'){startRun(els,null);return}
+    if(mode==='first'){
+    startRun(els,null);
+    setTimeout(()=>showTutorialPrompt(),900);
+    return;
+  }
     W=newWorld((Math.random()*1e9)|0);
     V.bindWorld(W);UI.bindWorld(W);
+    setTimeout(()=>showTutorialPrompt(),900);
     V.setFollow(false);
     const bf=document.getElementById('btnFollow');
     if(bf){bf.classList.remove('on');bf.textContent='seguir'}
@@ -338,7 +372,10 @@ function boot(){
     for(const spk of ['paca','tamandua','garca','jaguatirica'])if(SP[spk]&&!cfg.species.includes(spk))cfg.species.push(spk);
   }
   applyWorldConfig(cfg);
-  if(!saved){openLobby(els,'first');return}
+  if(!saved){
+    if(els.intro)els.intro.style.display='none';
+    openLobby(els,'first');return;
+  }
   startRun(els,saved);
 }
 function startRun(els,saved){
@@ -365,8 +402,6 @@ function startRun(els,saved){
     document.querySelectorAll('#speedBtns button').forEach(b=>b.classList.toggle('on',+b.dataset.sp===(paused?0:speed)));
   }
 
-  introMsg.textContent=loaded?('continuando o save de '+saveDateStr(saved.ts)+'…'):'nasce uma floresta nova…';
-  setTimeout(()=>intro.classList.add('hide'),loaded?900:1400);
 
   UI.toast(loaded?('Save carregado. O mundo continuou de onde parou.'+(W.migratedBiomes&&(W.migratedBiomes.cactos||W.migratedBiomes.animals)?` O deserto apareceu: ${W.migratedBiomes.animals} bichos do deserto e ${W.migratedBiomes.cactos} cactos.`:'')):`${W.animals.length} bichos acordaram numa floresta enorme. Clique em um deles.`);
   UI.saveInfo(loaded?('save de '+saveDateStr(saved.ts)):'sem save ainda');
@@ -456,4 +491,5 @@ function startRun(els,saved){
   window.__floresta={get W(){return W},get V(){return V},get UI(){return UI},save:saveNow,serialize:serializeWorld,load:deserializeWorld,setSpeed};
 }
 
+initTutorial();
 boot();
