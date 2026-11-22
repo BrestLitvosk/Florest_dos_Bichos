@@ -243,11 +243,16 @@ function hgt(x,z){
 function inPond(x,z,m=1.08){for(const p of PONDS){if(Math.hypot(x-p.x,z-p.z)<p.r*m)return p}return null}
 function nearestPond(x,z){let b=null,bd=1e9;for(const p of PONDS){const d=Math.hypot(x-p.x,z-p.z)-p.r;if(d<bd){bd=d;b=p}}return {p:b,d:bd}}
 function inWater(x,z,m=1){return isOcean(x,z)||!!inPond(x,z,m)||inRiver(x,z,m*.9)}
+const LAND_GENERATION_KINDS=new Set([
+  'arvore','pinheiro','moita','flor','capim','samambaia','cogumelo_m','cogumelo_v',
+  'pinha','fruta','galho','folha','raiz','pedra','monte','flor_deserto','cacto','osso',
+  'junco','mushroom','cogumelo_assado','baga','baga_assada','lama'
+]);
 function cleanTreesFromWater(){
   if(!W)return 0;
   let removed=0;
   for(const t of W.things){
-    if(t.gone||(t.kind!=='arvore'&&t.kind!=='pinheiro')||!inWater(t.x,t.z,1.02))continue;
+    if(t.gone||(!LAND_GENERATION_KINDS.has(t.kind)&&t.kind!=='ruina')||!inWater(t.x,t.z,1.02))continue;
     removeThing(t);removed++;
   }
   return removed;
@@ -522,6 +527,7 @@ function ensureWaterThings(){
 function freePos(){
   for(let i=0;i<50;i++){
     const x=rnd(-EDGE,EDGE),z=rnd(-EDGE,EDGE);
+    if(isOcean(x,z)||inWater(x,z,1.08))continue;
     let ok=true;for(const p of PONDS)if(Math.hypot(x-p.x,z-p.z)<p.r*1.6)ok=false;
     if(inRiver(x,z,1.5))ok=false;
     if(ok)return {x,z};
@@ -798,6 +804,7 @@ function newWorld(seed){
 const RUIN_SITES=[{x:-74,z:58},{x:86,z:-86},{x:4,z:-150},{x:-150,z:-20},{x:120,z:100}];
 function placeRuins(){
   for(const s of RUIN_SITES){
+    if(isOcean(s.x,s.z)||inWater(s.x,s.z,1.15))continue;
     if(W.things.some(t=>!t.gone&&t.kind==='ruina'&&Math.hypot(t.x-s.x,t.z-s.z)<9))continue;
     const glyphs=[];
     const cons='ptkbdgmnlrvs'.split('');

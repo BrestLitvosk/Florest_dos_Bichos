@@ -125,8 +125,8 @@ function initView(canvas){
         const vy=H(px,pz)-.02;
         terrPos[vi*3]=px;terrPos[vi*3+1]=vy;terrPos[vi*3+2]=pz;
         let nearWater=false;
-        for(const p of PONDS)if(Math.hypot(px-p.x,pz-p.z)<p.r*1.7){nearWater=true;break}
-        if(!nearWater&&riverDist(px,pz)<RIVER.width+6)nearWater=true;
+        for(const p of PONDS)if(Math.hypot(px-p.x,pz-p.z)<p.r*1.25){nearWater=true;break}
+        if(!nearWater&&riverDist(px,pz)<RIVER.width+2.5)nearWater=true;
         if(nearWater&&vy<WATER_Y-.2)colorTmp.setRGB(.05,.115+.06*Math.min(1,W.flood),.10+.04*Math.min(1,W.flood));
         else if(nearWater&&vy<WATER_Y+.3){
           const wet=.62+Math.min(.38,W.flood*.55);
