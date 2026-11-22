@@ -35,19 +35,34 @@ const MOUNTAINS=BASE_MOUNTAINS.slice();
 const BASE_PONDS=[
   {x:-30,z:26,r:9},{x:34,z:-34,r:7},{x:56,z:46,r:11},{x:-52,z:-58,r:9},
   // pântano alagado no sul do mapa maior
-  {x:-138,z:146,r:12,marsh:true,swamp:true},{x:138,z:142,r:10,marsh:true,swamp:true},
-  {x:-116,z:134,r:7,marsh:true,swamp:true},
+  {x:-138,z:146,r:15,marsh:true,swamp:true},{x:138,z:142,r:13,marsh:true,swamp:true},
+  {x:-116,z:134,r:9,marsh:true,swamp:true},
   {x:62,z:168,r:9},{x:-160,z:164,r:9,marsh:true},
 ];
 const DESERT_ZONES=[{x:-96,z:118,r:58},{x:96,z:-8,r:40},{x:196,z:120,r:44}];
+let BIOME_REGIONS=null;
+let BIOME_REGION_SEED=0;
+let OCEAN_ZONE=null;
+let RIVER_MOUTH=null;
 const WATER_Y=-1.1;
 const RIVER={base:16,amp:9,width:3.4};
 const WATERFALL={z:-34};
 function riverX(z){return RIVER.base+Math.sin(z*.055+1.1)*RIVER.amp+Math.sin(z*.021+2)*4;}
-function riverDist(x,z){return Math.abs(x-riverX(z));}
+function riverDist(x,z){
+  let d=Math.abs(x-riverX(z));
+  if(RIVER_MOUTH){
+    const nearX=clamp(x,RIVER_MOUTH.minX,RIVER_MOUTH.maxX);
+    d=Math.min(d,Math.hypot(x-nearX,z-RIVER_MOUTH.z));
+  }
+  return d;
+}
 function inRiver(x,z,m=1){return riverDist(x,z)<RIVER.width*m;}
 function wetAt(x,z){return Math.sin(x*.043+2.2)*Math.cos(z*.05-1.1)+.6*Math.sin((x+z)*.026+1.7);}
 function desertAt(x,z){
+  if(BIOME_REGIONS){
+    const region=biomeRegionAt(x,z);
+    return region&&region.biome===8?clamp(.24+region.margin/38*.76):0;
+  }
   let best=0;
   for(const d of DESERT_ZONES){
     if(Math.abs(d.x)>EDGE+20||Math.abs(d.z)>EDGE+20)continue;
@@ -56,25 +71,137 @@ function desertAt(x,z){
   }
   return best;
 }
+function biomeRegionAt(x,z){
+  if(!BIOME_REGIONS||!BIOME_REGIONS.length)return null;
+  const phase=(BIOME_REGION_SEED%100000)*.0001;
+  const wx=x+Math.sin(z*.024+phase+Math.sin(x*.013)*.8)*20;
+  const wz=z+Math.sin(x*.022-phase+Math.cos(z*.014)*.8)*20;
+  let first=null,d1=Infinity,d2=Infinity;
+  for(const region of BIOME_REGIONS){
+    const d=Math.hypot(wx-region.x,wz-region.z);
+    if(d<d1){d2=d1;d1=d;first=region}
+    else if(d<d2)d2=d;
+  }
+  return first?{biome:first.biome,margin:d2-d1}:null;
+}
+function makeOceanZone(seed,biomes){
+  RIVER_MOUTH=null;
+  if(!(biomes||[]).includes(10)){OCEAN_ZONE=null;return}
+  const rng=mulberry32(((seed>>>0)^0xc2b2ae35)>>>0);
+  OCEAN_ZONE={side:['west','east','north','south'][Math.floor(rng()*4)],phase:rng()*TAU};
+  if(OCEAN_ZONE.side==='west'||OCEAN_ZONE.side==='east'){
+    const z=clamp(Math.sin(OCEAN_ZONE.phase+.7)*HALF*.38,-EDGE+20,EDGE-20);
+    const boundary=oceanBoundaryAt(0,z);
+    const mouthX=OCEAN_ZONE.side==='west'?boundary-3:-boundary+3;
+    const sourceX=riverX(z);
+    RIVER_MOUTH={z,minX:Math.min(sourceX,mouthX),maxX:Math.max(sourceX,mouthX)};
+  }
+}
+function riverClosestPoint(x,z){
+  let point={x:riverX(z),z};
+  let best=Math.abs(x-point.x);
+  if(RIVER_MOUTH){
+    const mouthX=clamp(x,RIVER_MOUTH.minX,RIVER_MOUTH.maxX);
+    const distance=Math.hypot(x-mouthX,z-RIVER_MOUTH.z);
+    if(distance<best){point={x:mouthX,z:RIVER_MOUTH.z};best=distance}
+  }
+  return point;
+}
+function riverBridgeYaw(x,z){
+  if(RIVER_MOUTH&&z>=RIVER_MOUTH.z-RIVER.width*2&&z<=RIVER_MOUTH.z+RIVER.width*2&&x>=RIVER_MOUTH.minX-4&&x<=RIVER_MOUTH.maxX+4)return Math.PI/2;
+  return Math.atan((riverX(z+2)-riverX(z-2))/4);
+}
+function oceanBoundaryAt(x,z){
+  if(!OCEAN_ZONE)return null;
+  const along=OCEAN_ZONE.side==='west'||OCEAN_ZONE.side==='east'?z:x;
+  return -HALF*.42+Math.sin(along*.026+OCEAN_ZONE.phase)*Math.min(18,HALF*.075);
+}
+function isOcean(x,z){
+  if(!OCEAN_ZONE)return false;
+  const boundary=oceanBoundaryAt(x,z),side=OCEAN_ZONE.side;
+  if(side==='west')return x<boundary;
+  if(side==='east')return x>-boundary;
+  if(side==='north')return z<boundary;
+  return z>-boundary;
+}
+function coastDistance(x,z){
+  if(!OCEAN_ZONE)return null;
+  const boundary=oceanBoundaryAt(x,z),side=OCEAN_ZONE.side;
+  if(side==='west')return x-boundary;
+  if(side==='east')return -boundary-x;
+  if(side==='north')return z-boundary;
+  return -boundary-z;
+}
+function oceanReturnPoint(x,z){
+  if(!OCEAN_ZONE)return null;
+  const boundary=oceanBoundaryAt(x,z),margin=7;
+  if(OCEAN_ZONE.side==='west')return {x:boundary-margin,z};
+  if(OCEAN_ZONE.side==='east')return {x:-boundary+margin,z};
+  if(OCEAN_ZONE.side==='north')return {x,z:boundary-margin};
+  return {x,z:-boundary+margin};
+}
+function landReturnPoint(x,z){
+  if(!OCEAN_ZONE)return null;
+  const boundary=oceanBoundaryAt(x,z),margin=7;
+  if(OCEAN_ZONE.side==='west')return {x:boundary+margin,z};
+  if(OCEAN_ZONE.side==='east')return {x:-boundary-margin,z};
+  if(OCEAN_ZONE.side==='north')return {x,z:boundary+margin};
+  return {x,z:-boundary-margin};
+}
+function makeBiomeRegions(seed,biomes){
+  const options=[...new Set((biomes||[]).filter(id=>[0,1,2,4,5,6,8,9].includes(id)))];
+  if(!options.length)options.push(0);
+  const width=HALF*2;
+  const count=Math.max(options.length,Math.min(24,Math.round(width*width/(120*120))));
+  const rng=mulberry32(((seed>>>0)^0x85ebca6b)>>>0);
+  const dominant=options[Math.floor(rng()*options.length)];
+  const labels=options.slice();
+  const dominantTarget=Math.min(count-options.length+1,Math.max(1,Math.round(count*(.42+rng()*.12))));
+  while(labels.filter(id=>id===dominant).length<dominantTarget)labels.push(dominant);
+  while(labels.length<count){
+    const others=options.filter(id=>id!==dominant);
+    labels.push(others.length&&rng()<.72?others[Math.floor(rng()*others.length)]:dominant);
+  }
+  for(let i=labels.length-1;i>0;i--){
+    const j=Math.floor(rng()*(i+1));[labels[i],labels[j]]=[labels[j],labels[i]];
+  }
+  const cols=Math.ceil(Math.sqrt(count)),rows=Math.ceil(count/cols);
+  const dx=width/cols,dz=width/rows,regions=[];
+  for(let i=0;i<count;i++){
+    const col=i%cols,row=Math.floor(i/cols);
+    const x=-HALF+(col+.5)*dx+(rng()-.5)*dx*.42;
+    const z=-HALF+(row+.5)*dz+(rng()-.5)*dz*.42;
+    regions.push({x:clamp(x,-EDGE+8,EDGE-8),z:clamp(z,-EDGE+8,EDGE-8),biome:labels[i]});
+  }
+  BIOME_REGION_SEED=seed>>>0;
+  BIOME_REGIONS=regions;
+}
 function buildPonds(){
-  PONDS=BASE_PONDS.filter(p=>Math.abs(p.x)<EDGE-6&&Math.abs(p.z)<EDGE-6).map(p=>({...p}));
-  // charcos do pantanal: laguinhos rasos espalhados nas áreas mais molhadas
+  PONDS=BASE_PONDS.filter(p=>Math.abs(p.x)<EDGE-6&&Math.abs(p.z)<EDGE-6)
+    .filter(p=>!isOcean(p.x,p.z))
+    .filter(p=>{const region=biomeRegionAt(p.x,p.z);return !region||region.biome!==8})
+    .map(p=>({...p}));
+  // lagoas em zonas úmidas e manchas naturalmente encharcadas
   const cand=[];
   for(let z=-EDGE+10;z<=EDGE-10;z+=6)for(let x=-EDGE+10;x<=EDGE-10;x+=6){
     const w=wetAt(x,z);
-    if(w<.5)continue;
+    const region=biomeRegionAt(x,z),wetland=region&&(region.biome===5||region.biome===6);
+    if(w<.5&&!wetland)continue;
+    if(isOcean(x,z))continue;
     if(Math.abs(x-riverX(z))<RIVER.width+9)continue;
     if(desertAt(x,z)>.2)continue;
     if(PONDS.some(p=>Math.hypot(x-p.x,z-p.z)<24))continue;
     if(MOUNTAINS.some(m=>Math.hypot(x-m.x,z-m.z)<m.r*1.15))continue;
-    cand.push({x,z,w});
+    cand.push({x,z,w:w+(wetland ? .8 : 0),swamp:!!(region&&region.biome===6)});
   }
   cand.sort((a,b)=>b.w-a.w);
+  const wetRegions=BIOME_REGIONS?BIOME_REGIONS.filter(r=>r.biome===5||r.biome===6).length:0;
+  const target=Math.min(30,Math.max(10,wetRegions*6));
   let n=0;
   for(const c of cand){
-    if(n>=6)break;
-    if(PONDS.some(p=>Math.hypot(p.x-c.x,p.z-c.z)<26))continue;
-    PONDS.push({x:c.x,z:c.z,r:5+(n%3)*1.7,marsh:true});
+    if(n>=target)break;
+    if(PONDS.some(p=>Math.hypot(p.x-c.x,p.z-c.z)<24))continue;
+    PONDS.push({x:c.x,z:c.z,r:8.5+(n%5)*1.3,marsh:true,swamp:c.swamp});
     n++;
   }
 }
@@ -87,40 +214,68 @@ function mountH(x,z){
   return m;
 }
 function hgt(x,z){
+  const coast=coastDistance(x,z);
+  if(coast!==null&&coast<=0){
+    const depth=sm(clamp(-coast/18));
+    return WATER_Y-.31-1.42*depth-.02*(.5+.5*Math.sin(x*.07+z*.043))*depth;
+  }
   let h=Math.sin(x*.11+1)*Math.cos(z*.09)*1.3+Math.sin(x*.045+z*.06)*1.6;
-  let w1=0,w2=0;
-  for(const p of PONDS){const d=Math.hypot(x-p.x,z-p.z);w1=Math.max(w1,sm((p.r*1.55-d)/(p.r*1.1)));w2=Math.max(w2,sm((p.r*2.2-d)/p.r));}
+  let w1=0,w2=0,mw1=0,mw2=0;
+  for(const p of PONDS){
+    const d=Math.hypot(x-p.x,z-p.z),inner=sm((p.r*1.55-d)/(p.r*1.1)),outer=sm((p.r*2.2-d)/p.r);
+    if(p.marsh){mw1=Math.max(mw1,inner);mw2=Math.max(mw2,outer)}
+    else{w1=Math.max(w1,inner);w2=Math.max(w2,outer)}
+  }
   h=h*(1-w2)+.2*w2;
+  h=h*(1-mw2)+.2*mw2;
   const wr=sm((RIVER.width+3.5-riverDist(x,z))/4.5);
   h=h*(1-wr)-1.8*wr;
-  h=h*(1-w1)-1.95*w1+mountH(x,z)*(1-w1);
+  h=h*(1-w1)-1.95*w1;
+  h=h*(1-mw1)-1.42*mw1+mountH(x,z)*(1-Math.max(w1,mw1));
   const dz=desertAt(x,z);
   if(dz>0)h+=Math.max(0,dz)*(.5+.3*Math.sin(x*.33+z*.21)+.18*Math.sin(x*.11-z*.27));
+  if(coast!==null&&coast<14){
+    const shore=1-sm(clamp(coast/14));
+    h=h*(1-shore)+(WATER_Y-.15)*shore;
+  }
   return h;
 }
 function inPond(x,z,m=1.08){for(const p of PONDS){if(Math.hypot(x-p.x,z-p.z)<p.r*m)return p}return null}
 function nearestPond(x,z){let b=null,bd=1e9;for(const p of PONDS){const d=Math.hypot(x-p.x,z-p.z)-p.r;if(d<bd){bd=d;b=p}}return {p:b,d:bd}}
-function inWater(x,z,m=1){return !!inPond(x,z,m)||inRiver(x,z,m*.9)}
-const BIOME_NAMES={0:'floresta',1:'mata fechada',2:'seco',3:'montanha',4:'taiga',5:'pantanal',6:'pântano',7:'serra',8:'deserto',9:'cerrado'};
-const BIOME_LIST=[0,2,4,5,6,8,9];
+function inWater(x,z,m=1){return isOcean(x,z)||!!inPond(x,z,m)||inRiver(x,z,m*.9)}
+function cleanTreesFromWater(){
+  if(!W)return 0;
+  let removed=0;
+  for(const t of W.things){
+    if(t.gone||(t.kind!=='arvore'&&t.kind!=='pinheiro')||!inWater(t.x,t.z,1.02))continue;
+    removeThing(t);removed++;
+  }
+  return removed;
+}
+const BIOME_NAMES={0:'floresta',1:'mata fechada',2:'seco',3:'montanha',4:'taiga',5:'pantanal',6:'pântano',7:'serra',8:'deserto',9:'cerrado',10:'oceano'};
+const BIOME_LIST=[0,2,4,5,6,8,9,10];
 let BIOME_ON={};
-for(const id of [0,1,2,3,4,5,6,7,8,9])BIOME_ON[id]=1;
+for(const id of [0,1,2,3,4,5,6,7,8,9,10])BIOME_ON[id]=1;
 function biomeAt(x,z,h){
-  const dry=Math.sin(x*.06+1.7)*Math.cos(z*.05-.6)+.55*Math.sin((x-z)*.035+2.2);
-  const wet=wetAt(x,z);
+  const region=biomeRegionAt(x,z);
   if(h===undefined)h=hgt(x,z);
   let bm;
-  const dz=desertAt(x,z);
-  if(h>5.2)bm=7;
+  if(isOcean(x,z))bm=10;
+  else if(h>5.2)bm=7;
   else if(h>2.4)bm=3;
-  else if(dz>.46)bm=8;
-  else if(z<-52&&dry<.9)bm=4;
-  else if(wet>.56&&h<1.18)bm=6;
-  else if(wet>.26&&h<1.75)bm=5;
-  else if(dry>.95)bm=9;
-  else if(dry>.55)bm=2;
-  else if(dry<-.5)bm=1;
-  else bm=0;
+  else if(region)bm=region.biome;
+  else{
+    const dry=Math.sin(x*.06+1.7)*Math.cos(z*.05-.6)+.55*Math.sin((x-z)*.035+2.2);
+    const wet=wetAt(x,z),dz=desertAt(x,z);
+    if(dz>.46)bm=8;
+    else if(z<-52&&dry<.9)bm=4;
+    else if(wet>.56&&h<1.18)bm=6;
+    else if(wet>.26&&h<1.75)bm=5;
+    else if(dry>.95)bm=9;
+    else if(dry>.55)bm=2;
+    else if(dry<-.5)bm=1;
+    else bm=0;
+  }
   if(!BIOME_ON[bm]){
     if(bm===8||bm===9||bm===4||bm===5||bm===6)bm=BIOME_ON[2]?2:(BIOME_ON[0]?0:1);
     else if(bm===1&&!BIOME_ON[1])bm=0;
@@ -129,7 +284,7 @@ function biomeAt(x,z,h){
 }
 function defaultCfg(){
   return {size:'medio',animals:30,wolfDays:10,wolfFirst:10,arriveEvery:0,animalCap:80,
-    biomes:[0,2,4,5,6,8,9],species:SPECIES_ORDER.slice()};
+    biomes:[0,2,4,5,6,8,9,10],species:SPECIES_ORDER.slice()};
 }
 function applyWorldConfig(cfg){
   cfg=Object.assign(defaultCfg(),cfg||{});
@@ -144,16 +299,21 @@ function applyWorldConfig(cfg){
   if(!Array.isArray(cfg.species))cfg.species=SPECIES_ORDER.slice();
   cfg.species=cfg.species.filter(s=>SP[s]);
   if(!cfg.species.length)cfg.species=SPECIES_ORDER.slice();
+  if(cfg.species.some(s=>SP[s].marine))for(const spk of NEW_MARINE_SPECIES)if(!cfg.species.includes(spk))cfg.species.push(spk);
+  if(cfg.species.some(s=>SP[s].marine)&&!cfg.biomes.includes(10))cfg.biomes.push(10);
   const sz=SIZES[cfg.size];
   GN=sz.gn;CELL=2;HALF=GN*CELL/2;EDGE=HALF-4;
-  for(const id of [0,1,2,3,4,5,6,7,8,9])BIOME_ON[id]=id===3||id===7||id===0?1:0;
+  for(const id of [0,1,2,3,4,5,6,7,8,9,10])BIOME_ON[id]=id===3||id===7||id===0?1:0;
   for(const id of cfg.biomes)BIOME_ON[id]=1;
   BIOME_ON[1]=BIOME_ON[1]||BIOME_ON[0];
   MOUNTAINS.length=0;
   for(const m of BASE_MOUNTAINS)if(Math.abs(m.x)<EDGE-2&&Math.abs(m.z)<EDGE-2)MOUNTAINS.push(m);
   if(GN>=256)for(const m of EXTRA_MOUNTAINS)MOUNTAINS.push(m);
-  buildPonds();
   CFG=cfg;
+  BIOME_REGIONS=null;
+  OCEAN_ZONE=null;
+  RIVER_MOUTH=null;
+  buildPonds();
   return CFG;
 }
 let CFG=null;
@@ -181,6 +341,9 @@ const K={
  quadro:{g:'um quadro',d:'uma tábua clara onde dá pra rabiscar',v:['desenhar','escrever']},
  peixe:{g:'peixe',d:'uma coisa prateada que escorrega na água',v:['provar','pegar'],food:1,smell:1,item:1},
  bagre:{g:'bagre',d:'um peixe gordo de bigodes compridos e pele grossa',v:['provar','pegar'],food:1,smell:1,item:1},
+ alga:{g:'alga',d:'uma planta aquática verde, macia e cheia de folhas',v:['provar','pegar'],food:1,item:1},
+ concha:{g:'concha',d:'uma concha dura que esconde um pedacinho de comida',v:['provar','pegar'],food:1,item:1},
+ coral:{g:'coral',d:'um pequeno recife colorido preso ao fundo',v:['olhar']},
  fruta:{g:'fruta',d:'uma bolinha doce e suculenta',v:['provar','pegar'],food:1,smell:2,item:1},
  junco:{g:'junco',d:'um punhado de folhas altas e molhadas',v:['provar','pegar'],food:1,item:1},
  vitoria:{g:'vitória-régia',d:'uma folha grande e redonda boiando',v:['pegar'],item:1},
@@ -211,6 +374,7 @@ const K={
  plantacao:{g:'plantação',d:'fileiras de folhas novas que alguém cuidou',v:['colher','olhar']},
  marco:{g:'marco de pedras',d:'uma pilha alta de pedras',v:['ficar']},
  cabana:{g:'cabana',d:'uma casa alta de galhos coberta de folhas',v:['ficar'],flam:.9},
+ casa:{g:'casa',d:'um abrigo construído, com paredes e teto',v:['ficar']},
  ponte:{g:'ponte',d:'uma passagem de madeira por cima da água',v:['ficar']},
  torre:{g:'torre',d:'uma torre alta de pedras empilhadas',v:['ficar']},
  celeiro:{g:'celeiro',d:'um monte oco de madeira e lama',v:['ficar'],flam:.8},
@@ -232,11 +396,12 @@ const K={
  flor_deserto:{g:'flor do deserto',d:'uma flor pequena e rosa que nasce na areia',v:['provar','pegar'],smell:1,item:1},
  lobo:{g:'lobo',d:'um bicho grande, cinzento e de olhos amarelos',v:['olhar','ficar']},
 };
+const AQUATIC_THINGS=new Set(['peixe','bagre','alga','concha','vitoria','coral','minerio']);
 const VERBG={provar:'provar',pegar:'pegar',sacudir:'sacudir a árvore',roer:'roer madeira',cavar:'cavar',ficar:'ficar perto',dormir:'dormir',conversar:'conversar',faiscar:'bater pedras',empilhar:'empilhar',cozinhar:'esquentar comida',combinar:'juntar coisas',olhar:'olhar',apertar:'apertar',desenhar:'desenhar',escrever:'escrever',pesquisar:'pesquisar',minerar:'minerar',rezar:'rezar',decifrar:'decifrar',pescar:'pescar',colher:'colher'};
 const VERB_ING={provar:'provando',pegar:'pegando',sacudir:'sacudindo',roer:'roendo',cavar:'cavando',ficar:'descansando',dormir:'dormindo',conversar:'conversando',faiscar:'batendo pedras',empilhar:'empilhando',cozinhar:'esquentando comida',combinar:'juntando coisas',largar:'largando',olhar:'olhando',apertar:'apertando',desenhar:'desenhando',escrever:'escrevendo',pesquisar:'pesquisando',minerar:'minerando',rezar:'rezando',decifrar:'decifrando os riscos',pescar:'pescando',colher:'colhendo'};
 
 const SP={
- castor:{label:'Castor',col:'#8a5a3c',vis:11,smell:5,speed:2.1,curio:.6,dig:.5,gnaw:1,soc:.5,cap:2,tough:1,swim:1,pref:{peixe:1.3}},
+ castor:{label:'Castor',col:'#8a5a3c',vis:11,smell:5,speed:2.1,curio:.6,dig:.5,gnaw:1,soc:.5,cap:2,tough:1,swim:1,pref:{peixe:1.3,alga:.8}},
  guaxinim:{label:'Guaxinim',col:'#8a929c',vis:12,smell:6,speed:2.5,curio:1,dig:.4,gnaw:.2,soc:.6,cap:2,tough:1,pref:{peixe:1.6,fruta:1.2}},
  toupeira:{label:'Toupeira',col:'#5a5f78',vis:5,smell:11,speed:1.8,curio:.7,dig:1,gnaw:.1,soc:.3,cap:1,tough:1},
  marmota:{label:'Marmota',col:'#c09560',vis:11,smell:6,speed:2.0,curio:.5,dig:.8,gnaw:.3,soc:.95,cap:1,tough:1},
@@ -244,18 +409,18 @@ const SP={
  porco_espinho:{label:'Porco-espinho',col:'#6b5a48',vis:9,smell:7,speed:1.7,curio:.65,dig:.6,gnaw:.4,soc:.35,cap:2,tough:1.5},
  porco_india:{label:'Porco-da-índia',col:'#c8a97e',vis:11,smell:5,speed:2.3,curio:.9,dig:.3,gnaw:.1,soc:.9,cap:1,tough:.7},
  esquilo:{label:'Esquilo',col:'#b06a3e',vis:13,smell:5,speed:2.9,curio:1,dig:.2,gnaw:.6,soc:.7,cap:2,tough:.7},
- nutria:{label:'Nútria',col:'#7a5a3c',vis:10,smell:6,speed:2.2,curio:.7,dig:.2,gnaw:.3,soc:.8,cap:1,tough:.8,swim:1,pref:{peixe:1.5,junco:1.4}},
+ nutria:{label:'Nútria',col:'#7a5a3c',vis:10,smell:6,speed:2.2,curio:.7,dig:.2,gnaw:.3,soc:.8,cap:1,tough:.8,swim:1,pref:{peixe:1.5,junco:1.4,alga:1.25}},
  cuica:{label:'Cuíca',col:'#9a7a5a',vis:10,smell:7,speed:2.8,curio:.9,dig:.3,gnaw:.2,soc:.6,cap:2,tough:.5,pref:{fruta:1.4,minhoca:1.3}},
- capivara:{label:'Capivara',col:'#8a6a4a',vis:11,smell:6,speed:1.9,curio:.5,dig:.2,gnaw:.5,soc:.95,cap:1,tough:1.2,swim:1,sz:1.3,pref:{junco:1.6,capim:1.4}},
+ capivara:{label:'Capivara',col:'#8a6a4a',vis:11,smell:6,speed:1.9,curio:.5,dig:.2,gnaw:.5,soc:.95,cap:1,tough:1.2,swim:1,sz:1.3,pref:{junco:1.6,capim:1.4,alga:.8}},
  pug:{label:'Pug',col:'#c9a878',vis:12,smell:7,speed:2.6,curio:.8,dig:.4,gnaw:.2,soc:.9,cap:2,tough:1,pred:1,sz:.95,pref:{peixe:1.3}},
  besouro_rinoceronte:{label:'Besouro-rinoceronte',col:'#4a3a2a',vis:8,smell:6,speed:1.5,curio:.6,dig:.6,gnaw:.1,soc:.3,cap:2,tough:1.2,sz:.55},
  serra_pau:{label:'Serra-pau',col:'#6b5232',vis:9,smell:5,speed:1.6,curio:.5,dig:.9,gnaw:.2,soc:.3,cap:1,tough:1,sz:.62},
- sapo:{label:'Sapo',col:'#5f8a3a',vis:9,smell:7,speed:1.8,curio:.7,dig:.2,gnaw:.05,soc:.5,cap:1,tough:.6,swim:1,sz:.75,pref:{peixe:1.4,minhoca:1.5}},
+ sapo:{label:'Sapo',col:'#5f8a3a',vis:9,smell:7,speed:1.8,curio:.7,dig:.2,gnaw:.05,soc:.5,cap:1,tough:.6,swim:1,sz:.75,pref:{peixe:1.4,minhoca:1.5,alga:.75}},
  besouro_tartaruga:{label:'Besouro-tartaruga',col:'#7a8a3a',vis:8,smell:5,speed:1.4,curio:.6,dig:.3,gnaw:.1,soc:.4,cap:2,tough:1.4,sz:.55},
  cigarra_bola:{label:'Cigarra-bola',col:'#c8a03a',vis:10,smell:4,speed:1.7,curio:.5,dig:.1,gnaw:.05,soc:.4,cap:1,tough:.4,sz:.5},
  rola_bosta:{label:'Rola-bosta',col:'#3a3a2e',vis:7,smell:9,speed:1.5,curio:.6,dig:.7,gnaw:.05,soc:.3,cap:1,tough:.7,sz:.55},
  prea:{label:'Preá',col:'#a08050',vis:11,smell:6,speed:2.7,curio:.8,dig:.4,gnaw:.2,soc:.8,cap:1,tough:.6,pref:{capim:1.4}},
- lontra:{label:'Lontra',col:'#6a5240',vis:11,smell:7,speed:2.7,curio:1,dig:.3,gnaw:.2,soc:.7,cap:1,tough:.9,swim:1,pref:{peixe:2,fruta:1.6}},
+ lontra:{label:'Lontra',col:'#6a5240',vis:11,smell:7,speed:2.7,curio:1,dig:.3,gnaw:.2,soc:.7,cap:1,tough:.9,swim:1,pref:{peixe:2,fruta:1.6,alga:.8}},
  joaninha:{label:'Joaninha',col:'#c8402a',vis:9,smell:4,speed:1.6,curio:.6,dig:.1,gnaw:.05,soc:.5,cap:1,tough:.4,sz:.5,herb:1},
  besouro_fungo:{label:'Besouro dos fungos',col:'#6a5a8a',vis:8,smell:8,speed:1.4,curio:.7,dig:.2,gnaw:.1,soc:.4,cap:2,tough:.8,sz:.55,pref:{cogumelo_m:1.8,cogumelo_v:1.2}},
  tatu:{label:'Tatu',col:'#8a7a56',vis:10,smell:7,speed:1.9,curio:.6,dig:1,gnaw:.2,soc:.45,cap:2,tough:1.1,sz:.9,pref:{minhoca:1.5,raiz:1.3}},
@@ -271,10 +436,55 @@ const SP={
  paca:{label:'Paca',col:'#a5713f',vis:11,smell:7,speed:2.4,curio:.8,dig:.5,gnaw:.4,soc:.6,cap:1,tough:.8,pref:{fruta:1.5,raiz:1.2}},
  tamandua:{label:'Tamanduá',col:'#b09a78',vis:9,smell:9,speed:1.7,curio:.7,dig:.6,gnaw:.1,soc:.5,cap:1,tough:1.0,pref:{minhoca:1.8}},
  garca:{label:'Garça',col:'#e8e4d8',vis:15,smell:5,speed:2.2,curio:.7,dig:.1,gnaw:.05,soc:.55,cap:1,tough:.6,swim:1,sz:.9,pref:{peixe:2}},
- jaguatirica:{label:'Jaguatirica',col:'#c8a25a',vis:13,smell:8,speed:3.1,curio:.8,dig:.2,gnaw:.2,soc:.45,cap:2,tough:1.2,pred:1,pref:{peixe:1.4}},
+ jaguatirica:{label:'Jaguatirica',col:'#d59a3d',vis:13,smell:8,speed:3.1,curio:.8,dig:.2,gnaw:.2,soc:.45,cap:2,tough:1.2,pred:1,pref:{peixe:1.4}},
+ caranguejo:{label:'Caranguejo',col:'#df8a2e',vis:8,smell:6,speed:1.7,curio:.55,dig:.4,gnaw:.2,soc:.35,cap:2,tough:1.2,swim:1,marine:1,sz:.72,pref:{alga:1.2,concha:1.5}},
+ camarao:{label:'Camarão',col:'#e86d81',vis:9,smell:6,speed:2.2,curio:.7,dig:.1,gnaw:.1,soc:.55,cap:1,tough:.6,swim:1,marine:1,sz:.48,pref:{alga:1.5,peixe:1.1}},
+ camarao_pistola:{label:'Camarão-pistola',col:'#27a99a',vis:9,smell:7,speed:2.0,curio:.7,dig:.4,gnaw:.15,soc:.35,cap:1,tough:.85,swim:1,marine:1,sz:.58,pref:{alga:1.1,concha:1.5,peixe:1.1}},
+ lagosta:{label:'Lagosta',col:'#b6293d',vis:8,smell:7,speed:1.5,curio:.55,dig:.45,gnaw:.3,soc:.3,cap:2,tough:1.5,swim:1,marine:1,sz:.95,pref:{concha:1.7,alga:1.1,peixe:1.2}},
+ lagosta_boxeadora:{label:'Lagosta-boxeadora',col:'#9561c9',vis:10,smell:7,speed:2.3,curio:.8,dig:.2,gnaw:.2,soc:.3,cap:1,tough:1.0,swim:1,marine:1,pred:1,sz:.68,pref:{concha:1.4,peixe:1.5}},
+ polvo:{label:'Polvo',col:'#b266a2',vis:14,smell:8,speed:2.1,curio:1.2,dig:.2,gnaw:.4,soc:.45,cap:1,tough:.8,swim:1,marine:1,pred:1,sz:.82,pref:{concha:1.8,alga:.8,peixe:1.2}},
+ lula:{label:'Lula',col:'#75c6d1',vis:15,smell:7,speed:2.8,curio:1,dig:.05,gnaw:.15,soc:.55,cap:2,tough:.7,swim:1,marine:1,pred:1,sz:.78,pref:{peixe:1.6,concha:1.1}},
+ estrela_mar:{label:'Estrela-do-mar',col:'#e9a34b',vis:7,smell:8,speed:.8,curio:.5,dig:.15,gnaw:.1,soc:.25,cap:1,tough:1.2,swim:1,marine:1,sz:.7,pref:{concha:1.7,alga:1.1}},
+ ourico_mar:{label:'Ouriço-do-mar',col:'#594458',vis:6,smell:7,speed:.9,curio:.4,dig:.2,gnaw:.1,soc:.2,cap:1,tough:1.5,swim:1,marine:1,sz:.62,herb:1,pref:{alga:2,concha:.6}},
+ mexilhao:{label:'Mexilhão',col:'#527b78',vis:5,smell:9,speed:.55,curio:.3,dig:.05,gnaw:.05,soc:.3,cap:1,tough:1.1,swim:1,marine:1,sz:.56,pref:{alga:2,concha:.7}},
 };
-const SPECIES_ORDER=['castor','guaxinim','toupeira','marmota','vombate','porco_espinho','porco_india','esquilo','nutria','cuica','capivara','pug','besouro_rinoceronte','serra_pau','sapo','besouro_tartaruga','cigarra_bola','rola_bosta','prea','lontra','joaninha','besouro_fungo','tatu','coruja','cotia','calango','cascavel','escorpiao','feneco','camelo','paca','tamandua','garca','jaguatirica'];
+const NEW_MARINE_SPECIES=['polvo','lula','estrela_mar','ourico_mar','mexilhao'];
+const SPECIES_ORDER=['castor','guaxinim','toupeira','marmota','vombate','porco_espinho','porco_india','esquilo','nutria','cuica','capivara','pug','besouro_rinoceronte','serra_pau','sapo','besouro_tartaruga','cigarra_bola','rola_bosta','prea','lontra','joaninha','besouro_fungo','tatu','coruja','cotia','calango','cascavel','escorpiao','feneco','camelo','paca','tamandua','garca','jaguatirica','caranguejo','camarao','camarao_pistola','lagosta','lagosta_boxeadora','polvo','lula','estrela_mar','ourico_mar','mexilhao'];
 const DESERT_SPECIES=['calango','cascavel','escorpiao','feneco','camelo'];
+const WETLAND_SPECIES=['castor','nutria','capivara','sapo','lontra','garca'];
+const COLD_BIOME_SPECIES=['serra_pau','besouro_fungo'];
+
+function speciesBiomeMatches(spk,bm){
+  if(SP[spk]&&SP[spk].marine)return bm===10;
+  if(SP[spk]&&SP[spk].dry)return bm===8;
+  if(WETLAND_SPECIES.includes(spk))return bm===0||bm===1||bm===5||bm===6;
+  if(spk==='jaguatirica')return bm===0||bm===1||bm===2||bm===5||bm===6||bm===9;
+  if(COLD_BIOME_SPECIES.includes(spk))return bm===0||bm===1||bm===2||bm===4||bm===9;
+  return bm===0||bm===1||bm===2||bm===4||bm===5||bm===6||bm===9;
+}
+function biomeAreaWeights(cells){
+  const counts=Array(11).fill(0);
+  for(const c of cells)if(counts[c.bm]!=null)counts[c.bm]++;
+  const total=counts.reduce((sum,n)=>sum+n,0)||1;
+  return counts.map(n=>n/total);
+}
+function speciesBiomeWeight(spk,areas,dominant){
+  let weight=0;
+  if(SP[spk]&&SP[spk].marine)weight=areas[10]*2;
+  else if(SP[spk]&&SP[spk].dry)weight=areas[8]*1.4;
+  else if(WETLAND_SPECIES.includes(spk))weight=areas[0]*.15+areas[1]*.15+areas[5]+areas[6];
+  else if(spk==='jaguatirica')weight=areas[0]+areas[1]+areas[2]+areas[5]+areas[6]+areas[9];
+  else if(COLD_BIOME_SPECIES.includes(spk))weight=areas[0]*.2+areas[1]*.4+areas[2]*.2+areas[4]+areas[9]*.2;
+  else weight=areas[0]+areas[1]+areas[2]+areas[4]+areas[5]+areas[6]+areas[9];
+  return weight+(speciesBiomeMatches(spk,dominant)? .25 : 0);
+}
+function dominantBiomeId(cells){
+  const counts=Array(11).fill(0);
+  for(const c of cells)if(counts[c.bm]!=null)counts[c.bm]++;
+  let best=0;
+  for(let i=1;i<counts.length;i++)if(counts[i]>counts[best])best=i;
+  return best;
+}
 
 let W=null, V=null, UI=null;   // mundo, view 3D, HUD
 
@@ -318,6 +528,66 @@ function freePos(){
   }
   return {x:0,z:0};
 }
+function marineSpawnPoint(){
+  const cells=W&&W.oceanCells||[];
+  if(!cells.length)return null;
+  const c=pick(cells);
+  return {x:c.cx+rnd(-.65,.65),z:c.cz+rnd(-.65,.65)};
+}
+
+function seedAquaticHabitats(){
+  if(W.aquaticHabitatV>=1)return;
+  const countKind=(kind,test)=>W.things.reduce((n,t)=>n+(!t.gone&&t.kind===kind&&(!test||test(t))?1:0),0);
+  const sea=W.oceanCells||[];
+  const shallowSea=sea.filter(c=>{const d=coastDistance(c.cx,c.cz);return d!==null&&d<=-5&&d>=-58});
+  const deeperSea=sea.filter(c=>{const d=coastDistance(c.cx,c.cz);return d!==null&&d<=-14});
+  const addOceanKind=(kind,target,cells,data)=>{
+    let count=countKind(kind,t=>isOcean(t.x,t.z));
+    for(let i=0;count<target&&i<target*12&&cells.length;i++){
+      const c=pick(cells);
+      addThing(kind,c.cx+rnd(-.65,.65),c.cz+rnd(-.65,.65),data?data():{});
+      count++;
+    }
+  };
+  if(sea.length){
+    addOceanKind('peixe',54,sea,()=>({ph:rnd(0,TAU)}));
+    addOceanKind('alga',90,shallowSea.length?shallowSea:sea,()=>({ph:rnd(0,TAU)}));
+    addOceanKind('concha',38,shallowSea.length?shallowSea:sea,()=>({}));
+    let reefs=countKind('coral',t=>isOcean(t.x,t.z));
+    for(let tries=0;reefs<36&&tries<180&&shallowSea.length;tries++){
+      const c=pick(shallowSea);
+      if(W.things.some(t=>!t.gone&&t.kind==='coral'&&Math.hypot(t.x-c.cx,t.z-c.cz)<16))continue;
+      const patch=Math.min(6,36-reefs);
+      for(let i=0;i<patch;i++){
+        const a=rnd(0,TAU),d=rnd(.3,4.2),x=c.cx+Math.cos(a)*d,z=c.cz+Math.sin(a)*d;
+        if(!isOcean(x,z))continue;
+        addThing('coral',x,z,{sc:rnd(.8,1.35),hue:rint(0,3)});
+        reefs++;
+      }
+    }
+    let ore=countKind('minerio',t=>!!t.data.submerged);
+    for(let i=0;ore<12&&i<120&&deeperSea.length;i++){
+      const c=pick(deeperSea);
+      addThing('minerio',c.cx+rnd(-.6,.6),c.cz+rnd(-.6,.6),{submerged:true});
+      ore++;
+    }
+  }
+  for(const p of PONDS){
+    const target=p.marsh?(p.swamp?8:6):3;
+    let algae=countKind('alga',t=>Math.hypot(t.x-p.x,t.z-p.z)<p.r*.95&&!isOcean(t.x,t.z));
+    for(let i=0;algae<target&&i<target*3;i++){
+      const a=rnd(0,TAU),d=p.r*rnd(.18,.78);
+      addThing('alga',p.x+Math.cos(a)*d,p.z+Math.sin(a)*d,{ph:rnd(0,TAU)});
+      algae++;
+    }
+  }
+  const riverAlgae=countKind('alga',t=>!isOcean(t.x,t.z)&&inRiver(t.x,t.z));
+  for(let i=riverAlgae;i<16&&i<120;i++){
+    const z=rnd(-HALF+12,HALF-12);
+    addThing('alga',riverX(z)+rnd(-RIVER.width*.55,RIVER.width*.55),z,{ph:rnd(0,TAU)});
+  }
+  W.aquaticHabitatV=1;
+}
 
 function newWorld(seed){
   R=mulberry32(seed);
@@ -332,14 +602,21 @@ function newWorld(seed){
      snow:0,flood:0,yearLen:16,crisisT:0,tribeT:12,
      weather:{kind:'limpo',until:0,next:rnd(50,110)},
      stats:{fires:0,words:0,inventions:0,trees:0,mixes:0,tribes:0,crises:0,sacrifices:0,rituals:0,floods:0,winters:0,weather:0},
-     names:new Set(),words:new Set(),inventions:[]};
+     names:new Set(),words:new Set(),inventions:[],aquaticHabitatV:0};
+  W.campaign={completed:[],era:0,nextStory:W.t+W.dayLen*2,stories:[]};
+  W.biomeMapV=2;
+  makeBiomeRegions(seed,cfg.biomes);
+  makeOceanZone(seed,cfg.biomes);
+  buildPonds();
   W.arriveNext=W.arriveEvery>0?dayNum()+W.arriveEvery:1e9;
   for(let iy=0;iy<GN;iy++)for(let ix=0;ix<GN;ix++){
     const cx=-HALF+ix*CELL+CELL/2,cz=-HALF+iy*CELL+CELL/2;
     const h0=hgt(cx,cz);
-    const pnd=inPond(cx,cz,1.12)||inRiver(cx,cz,1.15);
+    const pnd=isOcean(cx,cz)||inPond(cx,cz,1.12)||inRiver(cx,cz,1.15);
     W.cells.push({ix,iy,cx,cz,st:pnd?4:0,f:pnd?0:rnd(.55,1),bt:0,digs:0,rg:0,sh:R(),h:h0,bm:biomeAt(cx,cz,h0),tb:0});
   }
+  W.oceanCells=W.cells.filter(c=>c.bm===10&&c.st===4);
+  W.dominantBiome=dominantBiomeId(W.cells);
   addThing('computador',0,0,{});
   addThing('mural',-6,5,{});
   addThing('quadro',7,-5,{});
@@ -412,6 +689,7 @@ function newWorld(seed){
     const bm=biomeAt(p.x,p.z,hgt(p.x,p.z));
     if(bm!==5&&bm!==6)continue;
     if(Math.abs(p.x)>EDGE-2||Math.abs(p.z)>EDGE-2)continue;
+    if(inWater(p.x,p.z,1.2))continue;
     if(W.things.some(t=>!t.gone&&t.kind==='arvore'&&Math.hypot(t.x-p.x,t.z-p.z)<4.5))continue;
     addThing('arvore',p.x,p.z,{br:3,rg:0,sc:rnd(.9,1.35),burn:0,mg:1});
   }
@@ -441,8 +719,8 @@ function newWorld(seed){
   for(const p of PONDS){
     addThing('agua',p.x,p.z,{r:p.r,pond:p});
     for(let i=0;i<5;i++){const a=rnd(0,TAU),d=p.r*1.32;addThing('lama',p.x+Math.cos(a)*d,p.z+Math.sin(a)*d,{patch:true})}
-    for(let i=0;i<(p.marsh?5:3);i++){const a=rnd(0,TAU),d=p.r*rnd(.35,.8);addThing('vitoria',p.x+Math.cos(a)*d,p.z+Math.sin(a)*d,{})}
-    for(let i=0;i<(p.marsh?5:4);i++){const a=rnd(0,TAU),d=p.r*rnd(.2,.9);addThing('peixe',p.x+Math.cos(a)*d,p.z+Math.sin(a)*d,{ph:rnd(0,TAU)})}
+    for(let i=0;i<(p.marsh?(p.swamp?5:8):3);i++){const a=rnd(0,TAU),d=p.r*rnd(.35,.8);addThing('vitoria',p.x+Math.cos(a)*d,p.z+Math.sin(a)*d,{})}
+    for(let i=0;i<(p.marsh?(p.swamp?4:7):4);i++){const a=rnd(0,TAU),d=p.r*rnd(.2,.9);addThing('peixe',p.x+Math.cos(a)*d,p.z+Math.sin(a)*d,{ph:rnd(0,TAU)})}
     // bagres de couro grosso nas águas mais fundas
     for(let i=0;i<(p.marsh?2:1);i++){const a=rnd(0,TAU),d=p.r*rnd(.25,.75);addThing('bagre',p.x+Math.cos(a)*d,p.z+Math.sin(a)*d,{ph:rnd(0,TAU)})}
   }
@@ -455,12 +733,31 @@ function newWorld(seed){
   const wx=riverX(WATERFALL.z);
   addThing('agua',wx,WATERFALL.z,{r:RIVER.width*1.15,wf:true});
   for(let i=0;i<7;i++){const a=rnd(0,TAU),d=rnd(2.6,4.2);addThing('pedra',wx+Math.cos(a)*d,WATERFALL.z+Math.sin(a)*d,{})}
+  seedAquaticHabitats();
   // os bichos, cada um mais perto do seu bioma
   const chosen=(cfg.species&&cfg.species.length?cfg.species:SPECIES_ORDER).filter(sp=>SP[sp]);
   const total=clamp(cfg.animals||30,1,200);
-  const roster=chosen.slice();shuffle(roster);
+  const areas=biomeAreaWeights(W.cells),dominant=W.dominantBiome;
+  const weighted=chosen.map(sp=>({sp,weight:speciesBiomeWeight(sp,areas,dominant)}))
+    .filter(x=>x.weight>.01);
+  const available=weighted.length?weighted:chosen.filter(sp=>!SP[sp].marine||areas[10]>.01).map(sp=>({sp,weight:1}));
+  const preferred=dominant===10?['lagosta_boxeadora']:dominant===8?['feneco','cascavel']:(dominant===5||dominant===6)?['jaguatirica']:['jaguatirica'];
+  const predator=preferred.find(sp=>chosen.includes(sp)&&SP[sp]&&SP[sp].pred);
   const spawnList=[];
-  for(let i=0;i<total;i++)spawnList.push(roster[i%roster.length]);
+  if(predator&&total>0)spawnList.push(predator);
+  const pool=available.filter(x=>x.sp!==predator);
+  function drawFromPool(source,remove){
+    if(!source.length)return null;
+    const sum=source.reduce((n,x)=>n+x.weight,0);
+    let roll=R()*sum;
+    let i=0;
+    for(;i<source.length-1;i++){roll-=source[i].weight;if(roll<0)break}
+    const entry=source[i];
+    if(remove)source.splice(i,1);
+    return entry.sp;
+  }
+  while(spawnList.length<total&&pool.length)spawnList.push(drawFromPool(pool,true));
+  while(spawnList.length<total)spawnList.push(drawFromPool(available,false));
   shuffle(spawnList).forEach((sp,i)=>{
     const an=i/spawnList.length*TAU+.4;
     const s=SP[sp];
@@ -468,20 +765,24 @@ function newWorld(seed){
     let p=null;
     for(let t=0;t<140&&!p;t++){
       const x=rnd(-EDGE,EDGE),z=rnd(-EDGE,EDGE);
-      if(inWater(x,z,.9))continue;
+      if(s.marine?!isOcean(x,z):inWater(x,z,.9))continue;
       const bm=biomeAt(x,z);
       if(bm===7)continue;
+      if(!speciesBiomeMatches(sp,bm))continue;
       if(drySp&&bm!==8)continue;
       if(!drySp&&bm===8&&chosen.some(o=>SP[o].dry))continue;
       const wetNear=nearestPond(x,z).d<6||riverDist(x,z)<RIVER.width+4;
-      if(s.swim&&!wetNear)continue;
+      if(s.swim&&!s.marine&&!wetNear)continue;
+      if(WETLAND_SPECIES.includes(sp)&&!(bm===5||bm===6||wetNear))continue;
       if((sp==='pug'||sp==='prea'||sp==='cuica'||sp==='capivara'||sp==='sapo')&&!(bm===5||bm===6)&&!wetNear)continue;
-      if((sp==='besouro_fungo'||sp==='serra_pau')&&bm!==2&&bm!==4)continue;
+      if(W.animals.some(other=>Math.hypot(x-other.x,z-other.z)<animalRadius(s)+animalRadius(other.sp)+.25))continue;
       p={x,z};
     }
     if(!p){
-      if(drySp){const dz=DESERT_ZONES.find(d=>Math.abs(d.x)<EDGE&&Math.abs(d.z)<EDGE);p=dz?{x:dz.x+rnd(-8,8),z:dz.z+rnd(-8,8)}:{x:Math.cos(an)*9,z:Math.sin(an)*9}}
-      else p={x:Math.cos(an)*9,z:Math.sin(an)*9};
+      const candidates=W.cells.filter(c=>speciesBiomeMatches(sp,c.bm)&&(s.marine?c.st===4:c.st===0));
+      const c=candidates.length?pick(candidates):null;
+      if(!c)return;
+      p={x:c.cx,z:c.cz};
     }
     makeAnimal(sp,p.x,p.z);
   });
@@ -489,7 +790,7 @@ function newWorld(seed){
   teachBoards();
   const names=[];
   for(const spk of chosen)if(!names.includes(SP[spk].label))names.push(SP[spk].label);
-  ev('🌱',`${W.animals.length} bichos acordaram numa floresta enorme: ${names.slice(0,6).join(', ')}${names.length>6?' e mais':''}. Nenhum sabe de nada.`);
+  ev('🌱',`${W.animals.length} bichos acordaram num mundo de ${BIOME_NAMES[W.dominantBiome]}: ${names.slice(0,6).join(', ')}${names.length>6?' e mais':''}. Nenhum sabe de nada.`);
   return W;
 }
 
@@ -590,6 +891,72 @@ function ensureNewBiomes(){
 
 /* =====================  EVENTOS / PENSAMENTOS  ===================== */
 function ev(icon,html,a){const e={t:W.t,icon,html};if(a&&a.id){e.aid=a.id;e.x=a.x;e.z=a.z}W.events.push(e);if(W.events.length>160)W.events.shift();UI&&UI.onEvent&&UI.onEvent(e)}
+const CAMPAIGN_ERAS=[
+  {name:'Exploração',desc:'Aprender a sobreviver e encontrar companhia.'},
+  {name:'Comunidade',desc:'Construir abrigos e inventar ferramentas.'},
+  {name:'Conhecimento',desc:'Pesquisar o mundo e deixar registros.'},
+  {name:'Cultura',desc:'Criar tradições e compartilhar histórias.'},
+];
+const CAMPAIGN_GOALS=[
+  {id:'days',era:0,title:'Conheça os primeiros dias',hint:'Deixe a floresta passar por três dias.',target:3,value:()=>Math.min(3,Math.floor(W.t/W.dayLen))},
+  {id:'tribe',era:0,title:'Forme uma comunidade',hint:'Ajude os bichos a formar a primeira tribo.',target:1,value:()=>W.tribes.length?1:0},
+  {id:'shelter',era:1,title:'Construa um abrigo',hint:'Uma toca, cabana ou casa conta.',target:1,value:()=>W.things.some(t=>!t.gone&&['toca','abrigo','cabana','casa','caverna'].includes(t.kind))?1:0},
+  {id:'inventions',era:1,title:'Descubra três invenções',hint:'Observe as ferramentas e soluções criadas.',target:3,value:()=>Math.min(3,W.inventions.length)},
+  {id:'research',era:2,title:'Pesquise três assuntos',hint:'Acompanhe o que os bichos aprendem na internet.',target:3,value:()=>{
+    const topics=new Set();for(const a of W.animals)for(const topic in (a.knowledge||{}))topics.add(topic);return Math.min(3,topics.size);
+  }},
+  {id:'marks',era:2,title:'Registre cinco marcas',hint:'Veja os murais e quadros da floresta.',target:5,value:()=>(W.mural.marks.length+W.quadro.marks.length)},
+  {id:'song',era:3,title:'Crie uma música',hint:'Uma canção marca o começo de uma tradição.',target:1,value:()=>W.songs.length?1:0},
+];
+function campaignProgress(goal){return Math.min(goal.target,goal.value())}
+function campaignEra(c){return CAMPAIGN_ERAS[Math.min(c.era||0,CAMPAIGN_ERAS.length-1)]}
+function addCampaignStory(){
+  const c=W.campaign;
+  const options=[];
+  if(W.dominantBiome===10||W.animals.some(a=>a.sp.marine))options.push(['🌊','Maré de descobertas','Correntes novas trazem algas e conchas para os moradores do oceano.','tide']);
+  if(W.dominantBiome===8)options.push(['🏜️','Rastros na areia','O vento descobre ossos e pegadas nas dunas.','desert']);
+  if((W.dominantBiome===5||W.dominantBiome===6||W.flood>.25)&&PONDS.length)options.push(['🌿','Águas em movimento','Um cardume aparece nas margens alagadas do pantanal.','wetland']);
+  if(W.tribes.length>1)options.push(['🤝','Encontro entre tribos','Viajantes de comunidades diferentes se encontram e trocam histórias.','community']);
+  if(W.tribes.length)options.push(['🏕️','Noite ao redor do fogo','A comunidade se reúne; uma lembrança antiga vira assunto da noite.','community']);
+  if(!options.length)options.push(['🍃','Um dia de descobertas','Frutas maduras caem perto das árvores e atraem os exploradores.','forest']);
+  const story=pick(options),entry={day:dayNum(),icon:story[0],title:story[1],text:story[2]};
+  if(story[3]==='tide'){
+    const sea=W.oceanCells||[];
+    for(let i=0;i<5&&sea.length;i++){const cell=pick(sea);addThing(i<3?'alga':'concha',cell.cx+rnd(-.7,.7),cell.cz+rnd(-.7,.7),{})}
+  }else if(story[3]==='desert'){
+    const desert=W.cells.filter(cell=>cell.bm===8&&cell.st===0);
+    for(let i=0;i<3&&desert.length;i++){const cell=pick(desert);addThing('osso',cell.cx,cell.cz,{})}
+  }else if(story[3]==='wetland'&&PONDS.length){
+    const pond=pick(PONDS);
+    for(let i=0;i<3;i++){const angle=rnd(0,TAU),distance=pond.r*rnd(.2,.8);addThing('peixe',pond.x+Math.cos(angle)*distance,pond.z+Math.sin(angle)*distance,{ph:rnd(0,TAU)})}
+  }else if(story[3]==='community'){
+    const tribe=pick(W.tribes);
+    for(const animal of W.animals)if(Math.hypot(animal.x-tribe.center.x,animal.z-tribe.center.z)<24)animal.n.social=clamp(animal.n.social+.12);
+  }else if(story[3]==='forest'){
+    const trees=W.things.filter(t=>!t.gone&&(t.kind==='arvore'||t.kind==='pinheiro'));
+    if(trees.length){const tree=pick(trees);for(let i=0;i<3;i++)spawnItem('fruta',tree.x+rnd(-1,1),tree.z+rnd(-1,1))}
+  }
+  c.stories.push(entry);if(c.stories.length>16)c.stories.shift();
+  ev(entry.icon,`<b>${entry.title}.</b> ${entry.text}`);
+}
+function updateCampaign(){
+  if(!W.campaign)W.campaign={completed:[],era:0,nextStory:W.t+W.dayLen*2,stories:[]};
+  const c=W.campaign;
+  const goal=CAMPAIGN_GOALS[c.completed.length];
+  if(goal&&campaignProgress(goal)>=goal.target){
+    c.completed.push(goal.id);
+    ev('🏅',`Objetivo concluído: <b>${goal.title}</b>.`);
+    const nextEra=Math.min(CAMPAIGN_ERAS.length-1,Math.floor(c.completed.length/2));
+    if(nextEra>c.era){
+      c.era=nextEra;
+      ev('📖',`Nova era: <b>${campaignEra(c).name}</b>. ${campaignEra(c).desc}`);
+    }
+  }
+  if(W.t>=c.nextStory){
+    addCampaignStory();
+    c.nextStory=W.t+W.dayLen*rnd(2,4);
+  }
+}
 const stripTags=s=>s.replace(/<small>.*?<\/small>/g,'').replace(/<[^>]+>/g,'');
 function say(a,html,type='t'){
   const last=a.log[a.log.length-1];
@@ -823,6 +1190,7 @@ function planDream(a){
 }
 
 /* =====================  BICHOS  ===================== */
+function animalRadius(sp){return Math.max(.3,(sp.sz||1)*.62)}
 function makeAnimal(spk,x,z){
   const sp=SP[spk];
   const cons=shuffle('ptkbdgmnlrvsfzjch'.split('')).slice(0,6);
@@ -830,7 +1198,7 @@ function makeAnimal(spk,x,z){
   const a={
     id:W.animals.length+1,spk,sp,x,z,yaw:0,y:hgt(x,z),
     name:null,lex:{},words:new Set(),phon:{c:cons,v:vow,e:shuffle(['n','m','r','s','k']).slice(0,2)},
-    n:{fome:.85,sede:.85,energia:.95,calor:.75,saude:1,social:.55},curio:.7,
+    n:{fome:.85,sede:.85,energia:.95,calor:.75,saude:1,social:.55},oxygen:1,curio:.7,
     hands:[],handT:0,mem:{},seen:{},kinds:new Set(),others:{},
     tried:{},recipes:{},inventions:[],lessons:{burned:false},fear:{fire:0,wolf:0},
     known:{},knowledge:{},research:0,tribeId:null,taken:null,
@@ -842,6 +1210,8 @@ function makeAnimal(spk,x,z){
   };
   if(sp.swim)a.recipes.pesca=a.recipes.pesca||{innate:true};
   W.animals.push(a);
+  nearestBlockedFix(a);
+  a.y=hgt(a.x,a.z);
   initSelf(a);
   say(a,'Acordei. Tudo é novo. Não sei o que é nada aqui.','think');
   return a;
@@ -969,7 +1339,7 @@ function decide(a){
   // coisas conhecidas × verbos
   const best={};
   for(const t of mem){
-    if(!a.sp.swim&&(t.kind==='peixe'||t.kind==='bagre'||t.kind==='vitoria'))continue;
+    if(!a.sp.swim&&AQUATIC_THINGS.has(t.kind)&&inWater(t.x,t.z,.95))continue;
     for(const v of verbsFor(a,t)){
       const key=v+':'+t.kind;const d=distTo(a,t);
       if(a.fear.fire>.5&&t.kind==='fogo'&&(a.mem[key]?a.mem[key].eff.saude:0)<-.05&&d<2)continue;
@@ -983,7 +1353,7 @@ function decide(a){
     if(kd.food||!a.mem['provar:'+kind])C.push({key:'provar:'+kind,score:scoreKey(a,'provar:'+kind,0,U,calm),mk:()=>[{t:'do',verb:'provar',kind,hand:true,dur:1.4,key:'provar:'+kind}]});
   }
   // emergência: fome ou sede muito baixas
-  if(a.n.sede<.22){
+  if(!a.sp.marine&&a.n.sede<.22){
     const w=mem.filter(t=>t.kind==='agua'||t.kind==='poco').sort((p,q)=>distTo(a,p)-distTo(a,q))[0];
     if(w)C.push({key:'provar:'+w.kind,score:1.0,mk:()=>planInteract(a,'provar',w)});
     else C.push({key:'explorar:agua',score:.8,mk:()=>planWater(a)});
@@ -994,7 +1364,7 @@ function decide(a){
       const kd=K[t.kind];if(!kd.food||t.kind==='agua')continue;
       if(t.kind==='moita'&&t.data.b<=0)continue;
       if(t.kind==='plantacao'&&(t.data.ripe|0)<=0)continue;
-      if(!a.sp.swim&&(t.kind==='peixe'||t.kind==='bagre'))continue;
+      if(!a.sp.swim&&AQUATIC_THINGS.has(t.kind)&&inWater(t.x,t.z,.95))continue;
       const d=distTo(a,t);if(d<fd){fd=d;food=t}
     }
     if(food)C.push({key:'provar:'+food.kind,score:1.1,mk:()=>planInteract(a,'provar',food)});
@@ -1432,7 +1802,7 @@ function maybeStartRecipeProject(a){
   if(a.recipes.ponte&&R()<.04&&!visibleMem(a).some(t=>t.kind==='ponte'&&Math.hypot(t.x-a.x,t.z-a.z)<42)){
     const rd=Math.abs(riverDist(a.x,a.z));
     if(rd<RIVER.width+26&&rd>RIVER.width*.7){
-      const pos=sitePos(a,false);
+      const pos=riverClosestPoint(a.x,a.z);
       a.project={type:'ponte',pos,tasks:[{kind:'galho',n:3,dest:'pile'},{kind:'tronco',n:1,dest:'pile'},{kind:'pedra',n:2,dest:'pile'}],idx:0,fails:0};
       say(a,`O rio corta o caminho. Já sei como fazer ${ref(a,'ponte')}: madeira e pedra por cima.`,'invent');
       return;
@@ -1481,7 +1851,7 @@ function maybeStartRecipeProject(a){
 
 /* =====================  EXECUÇÃO  ===================== */
 function nearestBlockedFix(a){
-  // todos sabem atravessar água (nadando devagar); só árvores e construções bloqueiam
+  // Águas e costa são atravessáveis; a necessidade de respirar guia o retorno ao habitat.
   for(const t of W.things){if(t.gone)continue;if(t.kind==='arvore'||t.kind==='pinheiro'||t.kind==='computador'||t.kind==='mural'||t.kind==='quadro'||t.kind==='totem'){
     const rad=t.kind==='computador'?1.7:t.kind==='mural'?1.8:t.kind==='quadro'?1.3:t.kind==='totem'?1.1:.75;const d=Math.hypot(a.x-t.x,a.z-t.z);
     if(d<rad){const an=Math.atan2(a.z-t.z,a.x-t.x);a.x=t.x+Math.cos(an)*rad;a.z=t.z+Math.sin(an)*rad}}}
@@ -1501,15 +1871,15 @@ function nearestBlockedFix(a){
     if(other===a||other.gone)continue;
     const dx=a.x-other.x,dz=a.z-other.z;
     const d=Math.hypot(dx,dz);
-    const ra=(a.sp.sz||1)*.38+(a.sp.cap||1)*.035;
-    const rb=(other.sp.sz||1)*.38+(other.sp.cap||1)*.035;
-    const min=ra+rb;
-    if(d>0&&d<min){
-      const nx=dx/d,nz=dz/d,push=(min-d)*.55;
+    const min=animalRadius(a.sp)+animalRadius(other.sp);
+    if(d<min){
+      const angle=d>.001?Math.atan2(dz,dx):((a.id*2.399)%TAU);
+      const nx=Math.cos(angle),nz=Math.sin(angle),push=(min-d)*.6;
       a.x+=nx*push;a.z+=nz*push;
       other.x-=nx*push*.35;other.z-=nz*push*.35;
     }
   }
+  a.x=clamp(a.x,-(HALF-1.5),HALF-1.5);a.z=clamp(a.z,-(HALF-1.5),HALF-1.5);
   a.x=clamp(a.x,-(HALF-1.5),HALF-1.5);a.z=clamp(a.z,-(HALF-1.5),HALF-1.5);
 }
 function curSpeed(a){
@@ -1709,6 +2079,8 @@ function execVerb(a,s){
             if(R()<.8){spawnItem('couro',a.x,a.z,{});discoverSkin(a)}
             return 'comeu';
           }
+          case 'alga':feed(a,.18);return 'comeu';
+          case 'concha':feed(a,.24);return 'comeu';
           case 'couro':a.n.calor=clamp(a.n.calor+.03);return 'pele';
           case 'bronze':a.n.saude=clamp(a.n.saude-.04);return 'dura';
           case 'fruta':feed(a,.24);a.n.sede=clamp(a.n.sede+.03);return 'comeu';
@@ -2560,8 +2932,39 @@ function stepAnimal(a,dt){
   const sh=shelterAt(a);
   const asleep=a.state==='sleep';
   const n=a.n;
+  const outsideOcean=!!(a.sp.marine&&OCEAN_ZONE&&!isOcean(a.x,a.z));
+  const underwaterLand=!!(!a.sp.marine&&!a.sp.swim&&OCEAN_ZONE&&isOcean(a.x,a.z)&&coastDistance(a.x,a.z)<-3);
+  const breathless=outsideOcean||underwaterLand;
+  if(OCEAN_ZONE){
+    const drain=outsideOcean?(a.spk==='caranguejo'?.025:.045):underwaterLand?.075:0;
+    a.oxygen=clamp((a.oxygen==null?1:a.oxygen)+(breathless?-drain:.16)*dt);
+    if(breathless){
+      if(a.airThoughtT==null){
+        a.airThoughtT=W.t;
+        say(a,outsideOcean?'Estou na beira do mar; vou explorar um pouco e depois volto.':'A água ficou funda. Preciso voltar para a margem.','think');
+      }
+      const returnThreshold=outsideOcean?.48:.42;
+      if(a.oxygen<=returnThreshold){
+        const key=outsideOcean?'return-ocean':'return-land';
+        if(!a.plan||!a.plan.meta||a.plan.meta.key!==key){
+          const target=outsideOcean?oceanReturnPoint(a.x,a.z):landReturnPoint(a.x,a.z);
+          if(target){
+            a.project=null;a.fleeing=false;
+            startPlan(a,[{t:'goto',x:target.x,z:target.z,r:1}],{key});
+          }
+        }
+        if(!a.breathWarning){
+          a.breathWarning=true;
+          say(a,outsideOcean?'Estou ficando sem ar! Voltando para o mar!':'Estou ficando sem ar! Voltando para terra!','alert');
+        }
+      }
+      if(a.oxygen<=0){n.saude=clamp(n.saude-dt*.012);a.pain=Math.max(a.pain,.2)}
+    }else{
+      a.airThoughtT=null;a.breathWarning=false;
+    }
+  }
   n.fome=clamp(n.fome-dt*(asleep?.0013:.0027));
-  n.sede=clamp(n.sede-dt*(asleep?.0018:.0035));
+  if(!a.sp.marine)n.sede=clamp(n.sede-dt*(asleep?.0018:.0035));
   if(asleep)n.energia=clamp(n.energia+dt*.018*(sh?1.6:1));
   else n.energia=clamp(n.energia-dt*(.0016+(a.state==='move'?.0006:0)));
   n.social=clamp(n.social-dt*.002);
@@ -2624,18 +3027,31 @@ function stepAnimal(a,dt){
     bumpOpinion(a,predNear,-.2);
     say(a,pick([`${nameTag(predNear)}! Vou correr!`,`Um ${predNear.sp.label.toLowerCase()} atrás de mim!`,`Sai, sai, sai!`]),'alert');
   }
-  // lobos: quem tem lança enfrenta, quem não tem corre
+  // Lobos: quem tem uma arma enfrenta; quem não tem corre.
+  a.fighting=false;
   if(W.wolves.length&&W.crisis&&W.crisis.phase!=='none'){
     let wolf=null,wd=1e9;
     for(const w of W.wolves){if(w.state==='down'||w.gone)continue;const dd=Math.hypot(w.x-a.x,w.z-a.z);if(dd<wd){wd=dd;wolf=w}}
     if(wolf&&wd<9){
       a.fear.wolf=clamp((a.fear.wolf||0)+dt*.2);
-      const armed=a.hands.includes('lanca')||a.hands.includes('armadura')||a.hands.includes('bronze');
-      if(armed&&wolf.state!=='down'){
-        wolf.hp-=dt*(a.hands.includes('lanca')?1.35:.5);
+      const weapon=['lanca','machado','picareta','bronze','armadura'].find(k=>a.hands.includes(k));
+      if(weapon&&wolf.state!=='down'){
+        a.fighting=true;a.fightWolfId=wolf.id;a.fightWeapon=weapon;
+        const damage=weapon==='lanca'?1.35:weapon==='machado'?1:weapon==='picareta'?.8:.5;
+        wolf.hp-=dt*damage;
+        if(!a.wolfHitAnimT||W.t-a.wolfHitAnimT>.9){
+          a.wolfHitAnimT=W.t;wolf.hitT=W.t;
+        }
         if(!a.wolfHitT||W.t-a.wolfHitT>10){
           a.wolfHitT=W.t;
-          say(a,pick(['A ponta da lança alcança! Vai embora, lobo!','Eu enfrento! A tribo está atrás de mim.','Não vou deixar você levar nossa comida.']),'alert');
+          const thoughts={
+            lanca:['A ponta da lança alcança! Vai embora, lobo!','Mantenho a lança entre o lobo e a tribo.'],
+            machado:['Meu machado vai fazer esse lobo recuar!','Ergui o machado. Não vou deixar o lobo chegar perto.'],
+            picareta:['Vou afastar o lobo com a picareta!','A ponta da picareta brilha quando avanço.'],
+            bronze:['Vou usar o bronze para espantar o lobo!'],
+            armadura:['Minha armadura me protege. Vou segurar a posição!'],
+          };
+          say(a,pick(thoughts[weapon]),'alert');
         }
         if(wolf.hp<=0)wolfDown(wolf,a);
       }else if(!a.fleeing&&R()<dt*1.2){
@@ -2662,7 +3078,11 @@ function stepAnimal(a,dt){
 function musing(a){
   if(a.state==='sleep'||a.fleeing)return;
   const n=a.n;let s=null;
-  if(daylight()<.15&&n.calor<.5)s=pick(['Está escuro e frio. Queria algo quente.','A noite é fria. Por que esfria quando escurece?']);
+  const outsideOcean=a.sp.marine&&OCEAN_ZONE&&!isOcean(a.x,a.z);
+  const underwaterLand=!a.sp.marine&&!a.sp.swim&&OCEAN_ZONE&&isOcean(a.x,a.z)&&coastDistance(a.x,a.z)<-3;
+  if(outsideOcean)s=pick(['A beira do mar é diferente. Vou explorar mais um pouco.','Tem coisas interessantes na areia molhada.']);
+  else if(underwaterLand)s=pick(['A água ficou funda. Preciso voltar para a margem.','Não consigo respirar debaixo d’água. Vou voltar para terra.']);
+  else if(daylight()<.15&&n.calor<.5)s=pick(['Está escuro e frio. Queria algo quente.','A noite é fria. Por que esfria quando escurece?']);
   else if(W.snow>.35)s=pick(['Branco por todo lado. A neve queima de frio.','Pegadas na neve… o chão ficou macio e gelado.']);
   else if(W.flood>.3&&(biomeAt(a.x,a.z)===5||biomeAt(a.x,a.z)===6))s=pick(['A água subiu no pantanal. O capim está debaixo dela.','Cheia de novo. Onde a gente pisa, a água responde.']);
   else if(W.rain>0)s=pick(['Água caindo do céu… tudo fica molhado.','Chuva! Será que tem lugar seco?']);
@@ -2678,8 +3098,15 @@ function musing(a){
 }
 function updateWish(a){
   const n=a.n;let text=null,tag='';
+  const outsideOcean=a.sp.marine&&OCEAN_ZONE&&!isOcean(a.x,a.z);
+  const underwaterLand=!a.sp.marine&&!a.sp.swim&&OCEAN_ZONE&&isOcean(a.x,a.z)&&coastDistance(a.x,a.z)<-3;
+  if(outsideOcean&&a.oxygen<.65){
+    text='Preciso voltar ao mar para respirar.';tag='respirar';
+  }else if(underwaterLand&&a.oxygen<.65){
+    text='Preciso voltar para a margem para respirar.';tag='respirar';
+  }
   const low=['fome','sede','energia','calor'].sort((p,q)=>n[p]-n[q])[0];
-  if(n[low]<.35){
+  if(!text&&n[low]<.35){
     if(low==='fome'){
       const food=Object.keys(a.mem).filter(k=>k.startsWith('provar:')&&a.mem[k].eff.fome>.1).map(k=>k.split(':')[1])[0];
       text=food?`Quero achar mais ${ref(a,food)} pra comer.`:'Quero descobrir o que dá pra comer.';tag='fome';
@@ -2690,14 +3117,14 @@ function updateWish(a){
     }else{
       text=a.recipes.fogo?(a.lessons.burned?`Quero fazer ${ref(a,'fogo')} sem queimar tudo: chão pelado e pedras em volta.`:`Quero fazer ${ref(a,'fogo')} de novo pra me esquentar.`):'Quero ficar quentinho. Existe algo que esquente?';tag='calor';
     }
-  }else if(a.project){
+  }else if(!text&&a.project){
     const nm={montinho:'um montinho para testar',fogueira:ref(a,'fogo'),abrigo:ref(a,'abrigo'),toca:ref(a,'toca'),marco:ref(a,'marco'),represa:ref(a,'represa')}[a.project.type]||'algo';
     text=`Estou construindo ${nm}.`;tag='inventar';
-  }else if(a.lessons.burned&&!a.recipes.fogo)text=`Quero entender de onde vem ${ref(a,'fogo')}.`;
-  else if(a.recipes.fogo&&a.lessons.burned&&R()<.5)text=`Quero aprender a controlar ${ref(a,'fogo')}.`;
-  else if(a.hands.length){text=`O que acontece se eu juntar ${ref(a,a.hands[0])} com outra coisa?`;tag='inventar'}
-  else if(a.recipes.machado&&R()<.5)text=`Quero usar ${ref(a,'machado')} pra pegar mais madeira.`;
-  else{
+  }else if(!text&&a.lessons.burned&&!a.recipes.fogo)text=`Quero entender de onde vem ${ref(a,'fogo')}.`;
+  else if(!text&&a.recipes.fogo&&a.lessons.burned&&R()<.5)text=`Quero aprender a controlar ${ref(a,'fogo')}.`;
+  else if(!text&&a.hands.length){text=`O que acontece se eu juntar ${ref(a,a.hands[0])} com outra coisa?`;tag='inventar'}
+  else if(!text&&a.recipes.machado&&R()<.5)text=`Quero usar ${ref(a,'machado')} pra pegar mais madeira.`;
+  else if(!text){
     const parts=[...knownParts(a)];
     const untried=[];for(let i=0;i<parts.length;i++)for(let j=i;j<parts.length;j++)if(!a.tried[comboKey(parts[i],parts[j])])untried.push([parts[i],parts[j]]);
     if(untried.length){const [x,y]=pick(untried);text=`Quero ver o que dá juntar ${ref(a,x)} com ${ref(a,y)}.`;tag='inventar'}
@@ -2724,6 +3151,12 @@ const CULTURES={
   lobo:{label:'do lobo',gloss:'o uivo que ronda o escuro',roof:5},
 };
 function tribeOf(a){return a&&a.tribeId?W.tribes.find(t=>t.id===a.tribeId):null}
+function tribeIsAquatic(tr){
+  if(!tr)return false;
+  if(tr.aquatic!=null)return !!tr.aquatic;
+  const members=(tr.members||[]).map(id=>W.animals.find(a=>a.id===id)).filter(Boolean);
+  return members.length>0&&members.every(a=>a.sp.marine);
+}
 function inventNumerals(tr){
   if(!tr||tr.numerals)return;
   const base=W.animals.find(a=>tr.members.includes(a.id))||W.animals[0];
@@ -2733,7 +3166,7 @@ function inventNumerals(tr){
   UI&&UI.onTribe&&UI.onTribe(tr);
 }
 function joinTribe(a,tr){
-  if(!a||!tr)return false;
+  if(!a||!tr||!!a.sp.marine!==tribeIsAquatic(tr))return false;
   const old=tribeOf(a);
   if(old&&old.id===tr.id)return false;
   if(old){
@@ -2759,6 +3192,7 @@ function maybeRecruitTribes(){
     let best=null,bs=-1;
     for(const tr of W.tribes){
       if(tr.members.length>=7)continue;
+      if(!!a.sp.marine!==tribeIsAquatic(tr))continue;
       if(Math.hypot(a.x-tr.center.x,a.z-tr.center.z)>70)continue;
       const buddy=W.animals.find(x=>x.id!==a.id&&tr.members.includes(x.id));
       const sh=buddy?sharedLex(a,buddy).n:0;
@@ -2789,6 +3223,20 @@ function updateGates(dt){
     gate.data.open=clamp((gate.data.open||0)+(target-(gate.data.open||0))*Math.min(1,dt*3));
   }
 }
+function separateHabitatTribes(){
+  for(const tr of W.tribes){
+    const aquatic=tribeIsAquatic(tr);
+    tr.members=tr.members.filter(id=>{
+      const a=W.animals.find(x=>x.id===id);
+      if(!a)return false;
+      if(!!a.sp.marine!==aquatic){
+        if(a.tribeId===tr.id)a.tribeId=null;
+        return false;
+      }
+      return true;
+    });
+  }
+}
 function sharedLex(a,b){
   let n=0;const words=[];
   for(const k in a.lex){if(!/^[kva]:/.test(k)||a.lex[k]!==b.lex[k])continue;n++;words.push(a.lex[k])}
@@ -2805,11 +3253,29 @@ function dryTribeSpot(cx,cz){
   }
   return {x:clamp(cx,-EDGE+12,EDGE-12),z:clamp(cz,-EDGE+12,EDGE-12)};
 }
+function marineTribeSpot(cx,cz){
+  if(!OCEAN_ZONE)return dryTribeSpot(cx,cz);
+  for(let i=0;i<36;i++){
+    const an=rnd(0,TAU),d=i===0?0:rnd(8,30);
+    const x=clamp(cx+Math.cos(an)*d,-EDGE+12,EDGE-12);
+    const z=clamp(cz+Math.sin(an)*d,-EDGE+12,EDGE-12);
+    if(!isOcean(x,z)||coastDistance(x,z)>-12)continue;
+    if(W.things.some(t=>!t.gone&&t.kind==='coral'&&Math.hypot(t.x-x,t.z-z)<12))continue;
+    return {x,z};
+  }
+  const x=clamp(cx,-EDGE+12,EDGE-12),z=clamp(cz,-EDGE+12,EDGE-12),boundary=oceanBoundaryAt(x,z);
+  if(OCEAN_ZONE.side==='west')return {x:Math.min(x,boundary-14),z};
+  if(OCEAN_ZONE.side==='east')return {x:Math.max(x,-boundary+14),z};
+  if(OCEAN_ZONE.side==='north')return {x,z:Math.min(z,boundary-14)};
+  return {x,z:Math.max(z,-boundary+14)};
+}
 function formTribe(group){
-  if(W.tribes.length>=4)return null;
+  const aquatic=!!OCEAN_ZONE&&group.length>0&&group.every(a=>a.sp.marine);
+  const habitatCount=W.tribes.filter(tr=>tribeIsAquatic(tr)===aquatic).length;
+  if(habitatCount>=(aquatic?1:4))return null;
   let cx=0,cz=0;for(const a of group){cx+=a.x;cz+=a.z}cx/=group.length;cz/=group.length;
-  const center=dryTribeSpot(cx,cz);
-  const score={fogo:0,agua:1,pedra:0,lua:0,floresta:1,lobo:0};
+  const center=aquatic?marineTribeSpot(cx,cz):dryTribeSpot(cx,cz);
+  const score={fogo:0,agua:aquatic?10:1,pedra:0,lua:0,floresta:1,lobo:0};
   const shared=new Set();
   for(const a of group){
     if(a.recipes.fogo||a.fear.fire>.35)score.fogo+=2;
@@ -2825,31 +3291,39 @@ function formTribe(group){
   const wname=words.length?pick(words):coin(group[0],3);
   const tname=wname[0].toUpperCase()+wname.slice(1);
   const id=W.tribeNid++;
-  const stock=addThing('cerca',center.x,center.z,{tribe:id,r:5.6,gate:rnd(0,TAU)});
-  const gateAn=stock.data.gate;
-  const gate=addThing('portao',center.x+Math.cos(gateAn)*5.6,center.z+Math.sin(gateAn)*5.6,{tribe:id,gate:gateAn,open:0});
-  const totem=addThing('totem',center.x+1.7,center.z+1.4,{tribe:id,element});
-  // fogueira comunitária: dá calor, cozinha e permite descobrir o bronze
-  const hearth=addThing('fogo',center.x,center.z,{tribe:id,contained:true,fuel:1e9,hearth:true,by:group[0],t0:W.t});
-  // pedras brilhantes juntadas do lado do fogo
-  addThing('mineral',center.x+1.1,center.z-.6,{});
-  addThing('mineral',center.x+1.55,center.z+.45,{});
-  const houseIds=[];
+  let stock=null,gate=null,totem=null,hearth=null,gateAn=null;
+  const houseIds=[],reefIds=[];
   const style=(wname.length+element.length+group.length)%3;
-  const vbm=biomeAt(center.x,center.z);
-  const houseMat=(vbm===8||vbm===9)?'arenito':(vbm===3||vbm===7?'pedra':'madeira');
-  for(let i=0;i<3;i++){
-    const an=i*TAU/3+rnd(-.35,.35),d=rnd(2.3,3.5);
-    const x=center.x+Math.cos(an)*d,z=center.z+Math.sin(an)*d;
-    const h=addThing('casa',x,z,{tribe:id,style,roof:cl.roof,house:true,mat:houseMat,by:group[0]});
-    houseIds.push(h.id);
+  let houseMat='recife';
+  if(aquatic){
+    for(let i=0;i<6;i++){
+      const an=i*TAU/6+rnd(-.18,.18),d=rnd(3,5);
+      const reef=addThing('coral',center.x+Math.cos(an)*d,center.z+Math.sin(an)*d,{tribe:id,reef:true,hue:i%4});
+      reefIds.push(reef.id);
+    }
+  }else{
+    stock=addThing('cerca',center.x,center.z,{tribe:id,r:5.6,gate:rnd(0,TAU)});
+    gateAn=stock.data.gate;
+    gate=addThing('portao',center.x+Math.cos(gateAn)*5.6,center.z+Math.sin(gateAn)*5.6,{tribe:id,gate:gateAn,open:0});
+    totem=addThing('totem',center.x+1.7,center.z+1.4,{tribe:id,element});
+    hearth=addThing('fogo',center.x,center.z,{tribe:id,contained:true,fuel:1e9,hearth:true,by:group[0],t0:W.t});
+    addThing('mineral',center.x+1.1,center.z-.6,{});
+    addThing('mineral',center.x+1.55,center.z+.45,{});
+    const vbm=biomeAt(center.x,center.z);
+    houseMat=(vbm===8||vbm===9)?'arenito':(vbm===3||vbm===7?'pedra':'madeira');
+    for(let i=0;i<3;i++){
+      const an=i*TAU/3+rnd(-.35,.35),d=rnd(2.3,3.5);
+      const x=center.x+Math.cos(an)*d,z=center.z+Math.sin(an)*d;
+      const h=addThing('casa',x,z,{tribe:id,style,roof:cl.roof,house:true,mat:houseMat,by:group[0]});
+      houseIds.push(h.id);
+    }
   }
   const faithWord=coin(group[0],3);
   const tr={id,name:tname,members:group.map(a=>a.id),center,lang:words.slice(0,18),
-    culture:{element,style,label:cl.label,social:group.reduce((s,a)=>s+a.sp.soc,0)/group.length},
-    faith:{element,name:faithWord,gloss:cl.gloss,piety:.2,prayers:[{word:faithWord,gloss:'o espírito '+cl.gloss}]},
-    stockadeId:stock.id,gateId:gate.id,totemId:totem.id,hearthId:hearth.id,
-    houseIds,houses:houseIds.slice(),mat:houseMat,village:0,gateAn,
+    aquatic,culture:{element,style,label:aquatic?'do recife':cl.label,social:group.reduce((s,a)=>s+a.sp.soc,0)/group.length},
+    faith:{element,name:faithWord,gloss:aquatic?'a vida que floresce sob as ondas':cl.gloss,piety:.2,prayers:[{word:faithWord,gloss:'o espírito '+(aquatic?'a vida que floresce sob as ondas':cl.gloss)}]},
+    stockadeId:stock?stock.id:null,gateId:gate?gate.id:null,totemId:totem?totem.id:null,hearthId:hearth?hearth.id:null,
+    houseIds,houses:houseIds.slice(),reefIds,mat:houseMat,village:0,gateAn,
     langBorn:W.t,langDead:0,langMixes:0,lastHouse:W.t,created:W.t};
   W.tribes.push(tr);W.stats.tribes=(W.stats.tribes||0)+1;
   W.langEvents=W.langEvents||[];
@@ -2857,23 +3331,23 @@ function formTribe(group){
   if(W.langEvents.length>60)W.langEvents.shift();
   for(const a of group){
     a.tribeId=id;a.exp+=2;a.n.social=clamp(a.n.social+.25);
-    say(a,`Somos <b>${tname}</b>, o povo ${cl.label}. Vamos morar juntos atrás das estacas.`,'invent');
+    say(a,aquatic?`Somos <b>${tname}</b>, o povo do recife. Vamos ficar juntos sob as ondas.`:`Somos <b>${tname}</b>, o povo ${cl.label}. Vamos morar juntos atrás das estacas.`,'invent');
   }
   const matName={madeira:'madeira',pedra:'pedra',arenito:'arenito'}[houseMat];
-  ev('🏕️',`Nasceu a tribo <b>${tname}</b> (${group.length} bichos, cultura ${cl.label}). Cercaram um pedaço de chão com estacas e ergueram casas de ${matName}.`);
+  ev(aquatic?'🪸':'🏕️',aquatic?`Nasceu a tribo aquática <b>${tname}</b> (${group.length} bichos). Corais formam uma colônia no fundo do mar.`:`Nasceu a tribo <b>${tname}</b> (${group.length} bichos, cultura ${cl.label}). Cercaram um pedaço de chão com estacas e ergueram casas de ${matName}.`);
   UI&&UI.onTribe&&UI.onTribe(tr);
   return tr;
 }
 function maybeFormTribes(){
-  if(W.animals.length<3||W.tribes.length>=4)return;
+  if(W.animals.length<3||W.tribes.length>=5)return;
   const free=W.animals.filter(a=>!a.tribeId&&!a.taken&&a.faint<=0&&Object.keys(a.lex).length>=2);
   for(const a of shuffle(free)){
     if(a.tribeId)continue;
-    const mates=free.filter(b=>b!==a&&!b.tribeId&&hyp(a,b)<75&&sharedLex(a,b).n>=2);
+    const mates=free.filter(b=>b!==a&&!b.tribeId&&!!b.sp.marine===!!a.sp.marine&&hyp(a,b)<75&&sharedLex(a,b).n>=2);
     if(mates.length<2)continue;
     const group=[a,...mates.slice(0,Math.min(6,rint(2,4)))];
     formTribe(group);
-    if(W.tribes.length>=4)break;
+    if(W.tribes.length>=5)break;
   }
 }
 function tribeFaithShift(tr,element,why){
@@ -2946,7 +3420,9 @@ function startCrisis(){
 }
 function wolfDown(w,by){
   w.hp=0;w.state='down';
-  ev('⚔️',`${by?nameTag(by)+' derrubou':'Derrubaram'} um lobo com ${by&&by.hands.includes('lanca')?'uma lança':'um golpe'}.`);
+  const weapon=by&&['lanca','machado','picareta','bronze','armadura'].find(k=>by.hands.includes(k));
+  const weaponName={lanca:'uma lança',machado:'um machado',picareta:'uma picareta',bronze:'uma barra de bronze',armadura:'um golpe protegido pela armadura'};
+  ev('⚔️',`${by?nameTag(by)+' derrubou':'Derrubaram'} um lobo com ${weaponName[weapon]||'um golpe'}.`);
 }
 function wolfSteal(w){
   if((W.crisis.stolen||0)>=8)return;
@@ -3020,7 +3496,7 @@ function endCrisis(){
 function returnFromWolves(a){
   a.taken=null;a.state='idle';a.plan=null;a.cur=null;a.faint=0;
   const tr=tribeOf(a);
-  if(tr){const s=dryTribeSpot(tr.center.x,tr.center.z);a.x=s.x;a.z=s.z}else{const s=freePos();a.x=s.x;a.z=s.z}
+  if(tr){const s=tribeIsAquatic(tr)?marineTribeSpot(tr.center.x,tr.center.z):dryTribeSpot(tr.center.x,tr.center.z);a.x=s.x;a.z=s.z}else{const s=freePos();a.x=s.x;a.z=s.z}
   a.y=hgt(a.x,a.z);
   const w=coin(a,3);a.lex['k:lobo']=w;
   a.known= a.known||{};
@@ -3090,7 +3566,7 @@ function spawnArrival(){
 function updateTribes(dt){
   W.tribeT=(W.tribeT||12)-dt;
   if(W.tribeT<=0){
-    W.tribeT=12;maybeFormTribes();maybeRecruitTribes();
+    W.tribeT=12;separateHabitatTribes();maybeFormTribes();maybeRecruitTribes();
     // tribos que já sabem escrever acabam inventando números sozinhas
     for(const tr of W.tribes){
       if(tr.numerals||R()>.3)continue;
@@ -3266,8 +3742,19 @@ function worldTick(dt){
     if(cnt('folha')<85&&R()<.75){const tr=pick(W.things.filter(t=>!t.gone&&t.kind==='arvore'&&!t.data.charred));if(tr)spawnItem('folha',tr.x,tr.z)}
     if(cnt('cogumelo_m')+cnt('cogumelo_v')<90&&R()<.5){const tr=pick(W.things.filter(t=>!t.gone&&t.kind==='arvore'));if(tr){const q=spawnItem(R()<.5?'cogumelo_m':'cogumelo_v',tr.x,tr.z);if(inPond(q.x,q.z,1.4))removeThing(q)}}
     if(cnt('fruta')<70&&R()<.45){const tr=pick(W.things.filter(t=>!t.gone&&t.kind==='arvore'&&!t.data.charred));if(tr){const q=spawnItem('fruta',tr.x,tr.z);if(inPond(q.x,q.z,1.3))removeThing(q)}}
-    if(cnt('peixe')<55&&R()<.5){const p=pick(PONDS);const an=rnd(0,TAU),d=p.r*rnd(.2,.9);addThing('peixe',p.x+Math.cos(an)*d,p.z+Math.sin(an)*d,{ph:rnd(0,TAU)})}
-    if(cnt('bagre')<16&&R()<.35){const p=pick(PONDS);const an=rnd(0,TAU),d=p.r*rnd(.2,.8);addThing('bagre',p.x+Math.cos(an)*d,p.z+Math.sin(an)*d,{ph:rnd(0,TAU)})}
+    if(PONDS.length&&cnt('peixe')<55&&R()<.5){const p=pick(PONDS);const an=rnd(0,TAU),d=p.r*rnd(.2,.9);addThing('peixe',p.x+Math.cos(an)*d,p.z+Math.sin(an)*d,{ph:rnd(0,TAU)})}
+    if(PONDS.length&&cnt('bagre')<16&&R()<.35){const p=pick(PONDS);const an=rnd(0,TAU),d=p.r*rnd(.2,.8);addThing('bagre',p.x+Math.cos(an)*d,p.z+Math.sin(an)*d,{ph:rnd(0,TAU)})}
+    const sea=W.oceanCells||[];
+    const countOcean=kind=>W.things.reduce((n,t)=>n+(!t.gone&&t.kind===kind&&isOcean(t.x,t.z)?1:0),0);
+    if(sea.length&&countOcean('peixe')<76&&R()<.65){const c=pick(sea);addThing('peixe',c.cx+rnd(-.7,.7),c.cz+rnd(-.7,.7),{ph:rnd(0,TAU)})}
+    if(sea.length&&countOcean('alga')<120&&R()<.55){const c=pick(sea);addThing('alga',c.cx+rnd(-.7,.7),c.cz+rnd(-.7,.7),{ph:rnd(0,TAU)})}
+    if(sea.length&&countOcean('concha')<52&&R()<.3){const c=pick(sea);addThing('concha',c.cx+rnd(-.7,.7),c.cz+rnd(-.7,.7),{})}
+    const freshAlgae=W.things.reduce((n,t)=>n+(!t.gone&&t.kind==='alga'&&!isOcean(t.x,t.z)&&(inPond(t.x,t.z)||inRiver(t.x,t.z))?1:0),0);
+    if(freshAlgae<90&&R()<.5){
+      const wetlands=PONDS.filter(p=>p.marsh),p=pick(wetlands.length?wetlands:PONDS);
+      if(p){const a=rnd(0,TAU),d=p.r*rnd(.2,.8);addThing('alga',p.x+Math.cos(a)*d,p.z+Math.sin(a)*d,{ph:rnd(0,TAU)})}
+      else{const z=rnd(-HALF+12,HALF-12);addThing('alga',riverX(z),z,{ph:rnd(0,TAU)})}
+    }
     if(cnt('junco')<120&&R()<.45){const p=freePos();if(wetAt(p.x,p.z)>.1||inWater(p.x,p.z,2.4))addThing('junco',p.x,p.z,{})}
     // não deixar montinhos e abrigos esquecidos entupirem o mundo (e o save)
     if(cnt('pilha')>170){
@@ -3302,7 +3789,10 @@ function worldTick(dt){
   for(const a of W.animals)stepAnimal(a,dt);
   // sincroniza passeio: todo bicho boia na superfície quando está na água
   for(const a of W.animals){
-    const y=hgt(a.x,a.z);
-    a.y=(inWater(a.x,a.z,.92)||floodAt(a.x,a.z)&&W.flood>.5)?Math.max(y,WATER_Y+.02):y;
+    const y=hgt(a.x,a.z),pond=inPond(a.x,a.z,.92);
+    const shallowMarsh=!!(pond&&pond.marsh)||(floodAt(a.x,a.z)&&W.flood>.5);
+    const wet=inWater(a.x,a.z,.92)||floodAt(a.x,a.z)&&W.flood>.5;
+    a.y=wet?Math.max(y,shallowMarsh?WATER_Y-.13+Math.min(.18,W.flood*.18):WATER_Y+.02):y;
   }
+  updateCampaign();
 }

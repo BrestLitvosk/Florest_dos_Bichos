@@ -20,6 +20,10 @@ canvas#world.dragging{cursor:grabbing}
 #app button{pointer-events:auto;font:inherit;color:var(--txt);background:rgba(255,255,255,.05);border:1px solid var(--line);border-radius:7px;padding:4px 9px;cursor:pointer;transition:background .15s,border-color .15s}
 #app button:hover{background:rgba(150,220,170,.12);border-color:rgba(150,220,170,.35)}
 #app button.on{background:rgba(143,211,154,.22);border-color:var(--accent);color:#eafff0}
+.modal button{pointer-events:auto;font:inherit;color:var(--txt);background:rgba(255,255,255,.05);border:1px solid var(--line);border-radius:7px;padding:4px 9px;cursor:pointer;transition:background .15s,border-color .15s}
+.modal button:hover{background:rgba(150,220,170,.12);border-color:rgba(150,220,170,.35)}
+.modal button.on{background:rgba(143,211,154,.22);border-color:var(--accent);color:#eafff0}
+.modal button:focus-visible,.codexMore summary:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 
 /* ---------- topo ---------- */
 #topbar{position:absolute;top:10px;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:10px;
@@ -49,11 +53,13 @@ canvas#world.dragging{cursor:grabbing}
 #topbar .speed button{padding:3px 7px;min-width:30px}
 #topbar .filebtns{display:flex;gap:4px;flex-wrap:nowrap}
 #topbar .filebtns button{padding:3px 8px;font-size:12px}
-.codexMore{position:relative;margin-left:auto}
+.codexMore{position:relative;display:flex;align-items:center;gap:4px;margin-left:auto}
+.codexMore[open]{margin-left:0;flex-wrap:wrap}
 .codexMore summary{list-style:none;cursor:pointer;border:1px solid var(--line);border-radius:7px;padding:3px 9px;font-size:11.5px;color:var(--txt);background:rgba(255,255,255,.05)}
 .codexMore summary::-webkit-details-marker{display:none}
-.codexMoreMenu{position:absolute;right:0;top:calc(100% + 6px);z-index:10;width:150px;display:grid;gap:4px;padding:7px;background:var(--bg2);border:1px solid var(--line);border-radius:9px;box-shadow:0 12px 30px rgba(0,0,0,.35)}
-.codexMoreMenu button{text-align:left;width:100%}
+.codexMore[open] summary{border-color:rgba(143,211,154,.42);background:rgba(143,211,154,.12)}
+.codexMoreMenu{position:static;display:flex;flex-wrap:wrap;align-items:center;gap:4px;padding:0;background:transparent;border:0;border-radius:0;box-shadow:none}
+.codexMoreMenu button{flex:none;text-align:center}
 #saveInfo{position:static;font-size:10px}
 
 /* ---------- lista de bichos ---------- */
@@ -74,6 +80,7 @@ canvas#world.dragging{cursor:grabbing}
 .card .nm .sp{font-weight:400;color:var(--dim);font-size:10.5px}
 .card .st{font-size:10px;color:var(--dim);display:flex;gap:5px;align-items:center}
 .card .bars{display:grid;grid-template-columns:repeat(6,1fr);gap:2px;margin-top:4px}
+.card .bars.marine{grid-template-columns:repeat(7,1fr)}
 .bar{height:4px;border-radius:2px;background:rgba(255,255,255,.1);overflow:hidden}
 .bar i{display:block;height:100%;border-radius:2px;background:var(--accent);transition:width .4s}
 .bar.b-fome i{background:var(--gold)}
@@ -82,6 +89,7 @@ canvas#world.dragging{cursor:grabbing}
 .bar.b-calor i{background:var(--warm)}
 .bar.b-saude i{background:var(--red)}
 .bar.b-social i{background:var(--violet)}
+.bar.b-oxygen i{background:#52d9e8}
 
 /* ---------- painel detalhe ---------- */
 #detail{position:absolute;right:12px;top:76px;bottom:64px;width:352px;display:flex;flex-direction:column;gap:7px;
@@ -265,6 +273,38 @@ body.no-ticker #ticker{display:none}
 .wcard .wbody{color:#b9cbbf;margin-top:4px;font-size:11.5px;line-height:1.45}
 .wcard .wtag{color:#6e8577;font-size:10px}
 .wcard .wword{color:var(--gold);font-weight:700;margin-right:6px}
+.journeyHero,.journeyGoal,.journeyStory{border:1px solid var(--line);border-radius:10px;background:rgba(255,255,255,.025);padding:10px 12px}
+.journeyHero{border-color:rgba(143,211,154,.35);background:rgba(81,132,91,.12)}
+.journeyHero b,.journeyGoalTop b,.journeyStory b{color:#eafff0;font-size:12px}
+.journeyHero p,.journeyGoal p,.journeyStory p{margin:4px 0 0;color:#aebfb2;font-size:11px;line-height:1.45}
+.journeyHeading{margin:14px 0 7px;color:var(--dim);font-size:10px;letter-spacing:.14em;text-transform:uppercase}
+.journeyGoal{margin:6px 0}
+.journeyGoal.active{border-color:rgba(232,207,106,.45)}
+.journeyGoal.done{border-color:rgba(143,211,154,.28)}
+.journeyGoalTop{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.journeyGoalTop span,.journeyGoal small{color:var(--dim);font-size:10px}
+.journeyBar{height:5px;margin:8px 0 4px;overflow:hidden;border-radius:6px;background:rgba(0,0,0,.25)}
+.journeyBar i{display:block;height:100%;border-radius:inherit;background:#8fd39a}
+.journeyGoal.active .journeyBar i{background:var(--gold)}
+.journeyStory{margin:6px 0}
+.journeyStories .empty{color:var(--dim);font-size:11px}
+.suggestionIntro{max-width:680px;margin-bottom:14px}
+.suggestionIntro h2{margin:0 0 6px;color:#eafff0;font-size:15px}
+.suggestionIntro p,.suggestionPrivacy{color:#aebfb2;font-size:11px;line-height:1.5}
+#suggestionForm{max-width:620px;display:grid;gap:7px}
+#suggestionForm label{margin-top:5px;color:#dce9df;font-size:11px;font-weight:600}
+#suggestionForm label span{color:var(--dim);font-weight:400}
+#suggestionForm input:not([type="hidden"]):not(.suggestionHoneypot),#suggestionForm textarea{
+  box-sizing:border-box;width:100%;padding:9px 10px;color:var(--txt);background:rgba(0,0,0,.2);
+  border:1px solid var(--line);border-radius:8px;font:inherit;font-size:12px
+}
+#suggestionForm textarea{resize:vertical;min-height:110px}
+#suggestionForm input:focus,#suggestionForm textarea:focus{outline:1px solid rgba(143,211,154,.65)}
+.suggestionHoneypot{position:absolute;left:-10000px;width:1px;height:1px;opacity:0}
+.suggestionActions{display:flex;align-items:center;gap:10px;margin-top:5px}
+.suggestionActions button:disabled{opacity:.55;cursor:wait}
+#suggestionStatus{color:#b9cbbf;font-size:11px}
+.suggestionPrivacy{margin:3px 0 0;color:var(--dim)}
 .tribeCard{border-left:3px solid rgba(183,155,234,.5);padding-left:9px}
 .tribeCard .tname{color:#e7dcff;font-weight:700}
 .tribeCard .tline{color:#9fb3a5;font-size:11px;line-height:1.45}
@@ -297,14 +337,15 @@ body.no-ticker #ticker{display:none}
 }
 @media (max-width:600px){
   .codexMore{margin-left:0}
-  .codexMoreMenu{position:fixed;left:8px;right:8px;width:auto;grid-template-columns:repeat(3,1fr)}
+  .codexMore[open]{flex:0 0 100%;width:100%;margin-left:0}
+  .codexMoreMenu{width:100%;min-width:0}
   #topbar .clocks #weatherLabel,#topbar .clocks #crisisLabel{display:none}
   #topbar .clocks{gap:7px}
   #roster{top:112px}
   #roster .tip{line-height:1.45}
   .modalCard{width:calc(100vw - 16px);max-height:calc(100dvh - 16px)}
   .modalHead{padding:8px 10px;gap:6px}
-  .modalHead nav{display:flex;overflow-x:auto;max-height:none;width:100%;scrollbar-width:none}
+  .modalHead nav{display:flex;flex-wrap:wrap;overflow:visible;max-height:none;width:100%;scrollbar-width:none}
   .modalHead nav button{flex:none}
   .modalBody{padding:10px}
   #lobbyCard{width:calc(100vw - 16px)}

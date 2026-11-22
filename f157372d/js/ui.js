@@ -19,6 +19,8 @@ function initUI(){
   const dayLabel=$('#dayLabel'),clockLabel=$('#clockLabel'),weatherLabel=$('#weatherLabel'),crisisLabel=$('#crisisLabel');
   const saveInfo=$('#saveInfo');
   const codex=$('#codex'),galleryCanvas=$('#galleryCanvas'),boardMeta=$('#boardMeta');
+  const journeyList=$('#journeyList');
+  const suggestionForm=$('#suggestionForm'),suggestionStatus=$('#suggestionStatus');
 
   let selectedId=null;
   let cardEls=new Map();
@@ -141,11 +143,14 @@ function initUI(){
       const names=mem.map(a=>a.name||a.sp.label.toLowerCase());
       const cult=CULTURES[tr.culture&&tr.culture.element]||{};
       const houses=W.things.filter(t=>!t.gone&&t.data&&t.data.tribe===tr.id&&t.data.house).length;
+      const reefs=W.things.filter(t=>!t.gone&&t.kind==='coral'&&t.data&&t.data.tribe===tr.id).length;
       const gate=W.things.find(t=>!t.gone&&t.kind==='portao'&&t.data&&t.data.tribe===tr.id);
       const nums=tr.numerals?`números: ${tr.numerals.map((w,i)=>`${i+1} ${w}`).join(' · ')}`:'ainda não contam';
+      const settlement=tr.aquatic?`${reefs} corais · colônia submersa`:`${houses} casa(s) · cercado em ${Math.round(tr.center.x)}, ${Math.round(tr.center.z)}`;
+      const gateInfo=tr.aquatic?'habitat: recife':`portão: ${gate?(gate.data.open>.5?'aberto':'trancado'):'—'}`;
       return `<div class="wcard tribeCard"><div class="tname">${tr.name}</div>
-        <div class="tline">cultura ${tr.culture.label||cult.label||'?'} · ${mem.length} membro(s) · ${houses} casa(s) · cercado em ${Math.round(tr.center.x)}, ${Math.round(tr.center.z)}</div>
-        <div class="tline">portão: ${gate?(gate.data.open>.5?'aberto':'trancado'):'—'} · ${nums}</div>
+        <div class="tline">cultura ${tr.culture.label||cult.label||'?'} · ${mem.length} membro(s) · ${settlement}</div>
+        <div class="tline">${gateInfo} · ${nums}</div>
         ${tr.inscription?`<div class="tline">inscrição da ruína: “${tr.inscription}”</div>`:''}
         <div class="tline">falam: ${(tr.lang||[]).slice(0,6).join(' · ')||'—'}</div>
         <div class="tline">${names.join(' · ')}</div>
@@ -165,7 +170,8 @@ function initUI(){
     }).join('');
     list.innerHTML=W.tribes.map(tr=>{
       const pr=(tr.faith.prayers||[]).map(p=>`<span class="lw">${p.word}</span>`).join(' ');
-      return `<div class="wcard tribeCard"><div class="whead"><span class="tname">${tr.name}</span><span class="wtag">${CULTURES[tr.faith.element]?CULTURES[tr.faith.element].label:tr.faith.element}</span></div>
+      const faithCulture=tr.aquatic?'do recife':CULTURES[tr.faith.element]?CULTURES[tr.faith.element].label:tr.faith.element;
+      return `<div class="wcard tribeCard"><div class="whead"><span class="tname">${tr.name}</span><span class="wtag">${faithCulture}</span></div>
         <div class="wbody">Adoram <b>${tr.faith.name}</b> — ${tr.faith.gloss}.</div>
         <div class="wbody">devoção: ${(tr.faith.piety*100).toFixed(0)}%</div>
         <div class="wbody"><span class="lwords">${pr||'<span class="empty">sem rezas ainda</span>'}</span></div></div>`;
@@ -190,6 +196,45 @@ function initUI(){
     list.innerHTML=`<div class="wcard"><div class="whead">o que se pode descobrir na internet</div><div class="wbody" style="max-height:200px;overflow:auto">${catalog}</div></div>`+
       (rows||'<span class="empty">ninguém pesquisou nada ainda.</span>');
   }
+  function renderJourney(){
+    if(!journeyList)return;
+    const campaign=W.campaign||{completed:[],era:0,stories:[]};
+    journeyList.replaceChildren();
+    const hero=document.createElement('section');hero.className='journeyHero';
+    const era=campaignEra(campaign);
+    const eraTitle=document.createElement('b');eraTitle.textContent=`Era atual · ${era.name}`;
+    const eraDesc=document.createElement('p');eraDesc.textContent=era.desc;
+    hero.append(eraTitle,eraDesc);journeyList.appendChild(hero);
+    const heading=document.createElement('h3');heading.className='journeyHeading';heading.textContent='Objetivos da floresta';
+    journeyList.appendChild(heading);
+    CAMPAIGN_GOALS.forEach((goal,index)=>{
+      const done=campaign.completed.includes(goal.id),active=index===campaign.completed.length;
+      const progress=done?goal.target:active?campaignProgress(goal):0;
+      const card=document.createElement('article');card.className=`journeyGoal${done?' done':''}${active?' active':''}`;
+      const top=document.createElement('div');top.className='journeyGoalTop';
+      const title=document.createElement('b');title.textContent=goal.title;
+      const status=document.createElement('span');status.textContent=done?'concluído':active?'em andamento':'bloqueado';
+      top.append(title,status);card.appendChild(top);
+      const hint=document.createElement('p');hint.textContent=goal.hint;card.appendChild(hint);
+      const bar=document.createElement('div');bar.className='journeyBar';
+      const fill=document.createElement('i');fill.style.width=`${Math.round(progress/goal.target*100)}%`;
+      bar.appendChild(fill);card.appendChild(bar);
+      const count=document.createElement('small');count.textContent=`${progress} / ${goal.target}`;card.appendChild(count);
+      journeyList.appendChild(card);
+    });
+    const storyHeading=document.createElement('h3');storyHeading.className='journeyHeading';storyHeading.textContent='Histórias recentes';
+    journeyList.appendChild(storyHeading);
+    const stories=document.createElement('div');stories.className='journeyStories';
+    const recent=(campaign.stories||[]).slice().reverse();
+    if(!recent.length){const empty=document.createElement('p');empty.className='empty';empty.textContent='As histórias vão aparecer conforme o mundo muda.';stories.appendChild(empty)}
+    for(const story of recent){
+      const row=document.createElement('article');row.className='journeyStory';
+      const title=document.createElement('b');title.textContent=`${story.icon||'🍃'} Dia ${story.day||1} · ${story.title||'Uma história'}`;
+      const text=document.createElement('p');text.textContent=story.text||'';
+      row.append(title,text);stories.appendChild(row);
+    }
+    journeyList.appendChild(stories);
+  }
   function renderCodex(tab){
     if(!codexOpen||!W)return;
     tab=tab||codex.querySelector('#codexTabs button.on').dataset.tab;
@@ -204,12 +249,43 @@ function initUI(){
     else if(tab==='music')renderMusicList();
     else if(tab==='wolves')renderWolves();
     else if(tab==='critters')renderCritters();
+    else if(tab==='journey')renderJourney();
   }
   codex.querySelectorAll('#codexTabs button').forEach(b=>b.addEventListener('click',()=>{
     setTab(b.dataset.tab);
     const more=codex.querySelector('.codexMore');
     if(more)more.open=false;
   }));
+  suggestionForm.addEventListener('submit',async e=>{
+    e.preventDefault();
+    const submit=suggestionForm.querySelector('button[type="submit"]');
+    const fields={};
+    new FormData(suggestionForm).forEach((value,key)=>{fields[key]=value});
+    submit.disabled=true;
+    suggestionStatus.textContent='Enviando…';
+    try{
+      const response=await fetch(suggestionForm.action,{
+        method:'POST',
+        headers:{'Content-Type':'application/json','Accept':'application/json'},
+        body:JSON.stringify(fields),
+      });
+      let result;
+      try{result=await response.json()}
+      catch(err){console.error('Resposta inválida do serviço de sugestões',err);throw new Error('O serviço retornou uma resposta inválida.')}
+      if(!response.ok||!result||(result.success!==true&&result.success!=='true')){
+        throw new Error(result&&result.message||`Falha no envio (HTTP ${response.status}).`);
+      }
+      suggestionForm.reset();
+      suggestionStatus.textContent='Sugestão enviada. Obrigado por ajudar a floresta!';
+    }catch(err){
+      console.error('Não foi possível enviar a sugestão',err);
+      suggestionStatus.textContent=err instanceof TypeError
+        ?'Não consegui conectar ao serviço. Verifique a conexão e tente novamente.'
+        :`Não foi possível enviar: ${err.message}`;
+    }finally{
+      submit.disabled=false;
+    }
+  });
   codex.querySelectorAll('.boardPick button').forEach(b=>b.addEventListener('click',()=>{
     activeBoard=b.dataset.board;
     codex.querySelectorAll('.boardPick button').forEach(x=>x.classList.toggle('on',x===b));
@@ -284,8 +360,9 @@ function initUI(){
         <div>
           <div class="nm"><span class="nmtxt"></span><span class="sp">${a.sp.label}</span></div>
           <div class="st"><span class="stateTxt"></span><span class="projTxt"></span></div>
-          <div class="bars">
+          <div class="bars${a.sp.marine?' marine':''}">
             ${NEEDS.map(n=>`<div class="bar b-${n}" title="${NEED_PT[n]}"><i></i></div>`).join('')}
+            <div class="bar b-oxygen" title="oxigênio" ${a.sp.marine?'':'hidden'}><i></i></div>
           </div>
         </div>`;
       div.addEventListener('click',()=>select(a.id));
@@ -315,6 +392,11 @@ function initUI(){
       proj.textContent=a.project?('· '+({montinho:'montinho',fogueira:'fogueira',toca:'toca',abrigo:'abrigo'}[a.project.type]||'construindo')):'';
       const bars=el.querySelectorAll('.bar i');
       NEEDS.forEach((n,i)=>{bars[i].style.width=(clamp(a.n[n])*100).toFixed(0)+'%'});
+      const oxygenBar=el.querySelector('.b-oxygen');
+      const needsOxygen=!!(a.sp.marine||(!a.sp.swim&&OCEAN_ZONE&&isOcean(a.x,a.z)&&coastDistance(a.x,a.z)<-3));
+      oxygenBar.hidden=!needsOxygen;
+      el.querySelector('.bars').classList.toggle('marine',needsOxygen);
+      oxygenBar.querySelector('i').style.width=(clamp(a.oxygen==null?1:a.oxygen)*100).toFixed(0)+'%';
     }
   }
 
@@ -356,6 +438,8 @@ function initUI(){
     if(n.saude<.45)f.push(['machucado','bad']);else if(n.saude<.75)f.push(['dolorido','gold']);
     if(n.social<.25)f.push(['sozinho','odd']);else if(n.social>.75)f.push(['enturmado','good']);
     if(a.fear&&a.fear.fire>.4)f.push(['com medo do fogo','bad']);
+    if(a.sp.marine&&OCEAN_ZONE&&!isOcean(a.x,a.z))f.push([a.oxygen<.35?'sem ar':'na beira do mar',a.oxygen<.35?'bad':'cold']);
+    if(!a.sp.marine&&!a.sp.swim&&OCEAN_ZONE&&isOcean(a.x,a.z)&&coastDistance(a.x,a.z)<-3)f.push([a.oxygen<.35?'sem ar':'na água funda',a.oxygen<.35?'bad':'cold']);
     if(a.pain>0)f.push(['sentindo dor','bad']);
     if(a.project)f.push(['empolgado com o '+(PROJ_NAME[a.project.type]||'projeto'),'good']);
     if(a.curio>.85)f.push(['muito curioso','gold']);
@@ -373,6 +457,8 @@ function initUI(){
     add((1-a.n.energia)*(daylight()<.25?1.15:1),'dormir');
     add(1-a.n.calor,'se esquentar');
     add((1-a.n.social)*.8,'conversar com alguém');
+    if(a.sp.marine&&OCEAN_ZONE&&!isOcean(a.x,a.z)&&a.oxygen<.65)add(.82+(1-a.oxygen)*.18,'voltar ao mar para respirar');
+    if(!a.sp.marine&&!a.sp.swim&&OCEAN_ZONE&&isOcean(a.x,a.z)&&coastDistance(a.x,a.z)<-3&&a.oxygen<.65)add(.82+(1-a.oxygen)*.18,'voltar à margem para respirar');
     add(a.curio*.7,'explorar e mexer nas coisas');
     if(a.hands.length)add(.5,'usar o que está carregando');
     if(a.n.saude<.6)add(1-a.n.saude,'se cuidar');
@@ -508,8 +594,9 @@ function initUI(){
     const tr=tribeOf(a);
     if(!tr){tribeBoxEl.innerHTML='<span class="empty">ainda não vive em tribo.</span>';return}
     const houses=W.things.filter(t=>!t.gone&&t.data&&t.data.tribe===tr.id&&t.data.house).length;
+    const reefs=W.things.filter(t=>!t.gone&&t.kind==='coral'&&t.data&&t.data.tribe===tr.id).length;
     tribeBoxEl.innerHTML=`<div class="tname">${tr.name}</div>
-      <div>cultura ${tr.culture.label||'?'} · ${tr.members.length} bichos · ${houses} casas</div>
+      <div>cultura ${tr.culture.label||'?'} · ${tr.members.length} bichos · ${tr.aquatic?`${reefs} corais no recife`:houses+' casas'}</div>
       <div class="fait">fé em ${tr.faith.name} — ${tr.faith.gloss}</div>
       <div class="dim">devoção ${(tr.faith.piety*100).toFixed(0)}% · falam ${(tr.lang||[]).slice(0,3).join(' · ')||'—'}</div>`;
   }

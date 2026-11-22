@@ -25,10 +25,11 @@ function serializeWorld(){
     mural:W.mural||{marks:[]},quadro:W.quadro||{marks:[]},
     tribes:W.tribes||[],tribeNid:W.tribeNid||1,wolves:W.wolves||[],wolfNid:W.wolfNid||1,
     crisis:W.crisis||null,snow:W.snow||0,flood:W.flood||0,yearLen:W.yearLen||16,
+    campaign:W.campaign||null,
     weather:W.weather||{kind:'limpo',until:0,next:80},
-    cfg:CFG,gn:GN,biomesV:2,rosterV:2,faunaV:2,wolfEvery:W.wolfEvery||0,wolfFirst:W.wolfFirst||0,
+    cfg:CFG,gn:GN,biomesV:2,biomeMapV:W.biomeMapV||1,rosterV:2,faunaV:3,wolfEvery:W.wolfEvery||0,wolfFirst:W.wolfFirst||0,
     arriveEvery:W.arriveEvery||0,animalCap:W.animalCap||80,arriveNext:W.arriveNext||0,arrivals:W.arrivals||0,
-    songs:(W.songs||[]).slice(-24),songT:W.songT||0,
+    songs:(W.songs||[]).slice(-24),songT:W.songT||0,aquaticHabitatV:W.aquaticHabitatV||0,
     // células compactas: só os números que mudam, sem objetos repetidos
     cellsV:2,
     cellSt:W.cells.map(c=>c.st),
@@ -43,7 +44,7 @@ function serializeWorld(){
       const others=[];for(const id in a.others)others.push({id:+id,t:a.others[id].t});
       const ld=a.lastDig&&a.lastDig.cell?{x:a.lastDig.x,z:a.lastDig.z,t:a.lastDig.t,ix:a.lastDig.cell.ix,iy:a.lastDig.cell.iy}:null;
       return {
-        id:a.id,spk:a.spk,name:a.name,x:a.x,z:a.z,yaw:a.yaw,n:{...a.n},
+        id:a.id,spk:a.spk,name:a.name,x:a.x,z:a.z,yaw:a.yaw,n:{...a.n},oxygen:a.oxygen,
         curio:a.curio,hands:a.hands.slice(),handT:a.handT,mem:a.mem,lex:a.lex,
         words:[...a.words],kinds:[...a.kinds],phon:a.phon,seen,others,
         tried:a.tried,recipes:a.recipes,inventions:a.inventions,lessons:a.lessons,fear:a.fear,
@@ -78,10 +79,23 @@ function deserializeWorld(data){
     arriveEvery:data.arriveEvery!=null?data.arriveEvery:(CFG?CFG.arriveEvery:0),
     animalCap:data.animalCap||(CFG?CFG.animalCap:80),
     arriveNext:data.arriveNext||1e9,arrivals:data.arrivals||0,
-    songs:data.songs||[],songT:data.songT||0,
+    songs:data.songs||[],songT:data.songT||0,aquaticHabitatV:data.aquaticHabitatV||0,
+    campaign:data.campaign||{completed:[],era:0,nextStory:(data.t||0)+(data.dayLen||240)*2,stories:[]},
     stats:data.stats||{fires:0,words:0,inventions:0,trees:0,mixes:0},
     names:new Set(data.names||[]),words:new Set(data.words||[]),inventions:data.inventions||[],
   };
+  W.biomeMapV=data.biomeMapV>=2?2:data.biomeMapV>=1?1:0;
+  if(W.biomeMapV)makeBiomeRegions(W.seed,CFG&&CFG.biomes);
+  else BIOME_REGIONS=null;
+  if(W.biomeMapV>=2)makeOceanZone(W.seed,CFG&&CFG.biomes);
+  else OCEAN_ZONE=null;
+  const savedGoals=new Set(Array.isArray(W.campaign.completed)?W.campaign.completed:[]);
+  W.campaign.completed=[];
+  for(const goal of CAMPAIGN_GOALS){if(!savedGoals.has(goal.id))break;W.campaign.completed.push(goal.id)}
+  W.campaign.era=clamp(W.campaign.era|0,0,CAMPAIGN_ERAS.length-1);
+  W.campaign.stories=Array.isArray(W.campaign.stories)?W.campaign.stories.slice(-16):[];
+  if(!Number.isFinite(W.campaign.nextStory))W.campaign.nextStory=W.t+W.dayLen*2;
+  buildPonds();
   W.stats.mixes=W.stats.mixes||0;W.stats.crises=W.stats.crises||0;W.stats.sacrifices=W.stats.sacrifices||0;W.stats.tribes=W.stats.tribes||0;
   let migrated=false;
   const compact=Array.isArray(data.cellSt)&&data.cellSt.length===GN*GN;
@@ -101,10 +115,11 @@ function deserializeWorld(data){
     for(let iy=0;iy<GN;iy++)for(let ix=0;ix<GN;ix++){
       const cx=-HALF+ix*CELL+CELL/2,cz=-HALF+iy*CELL+CELL/2;
       const h0=hgt(cx,cz);
-      const pnd=inPond(cx,cz,1.12)||inRiver(cx,cz,1.15);
+      const pnd=isOcean(cx,cz)||inPond(cx,cz,1.12)||inRiver(cx,cz,1.15);
       W.cells.push({ix,iy,cx,cz,st:pnd?4:0,f:pnd?0:rnd(.55,1),bt:0,digs:0,rg:0,sh:R(),h:h0,bm:biomeAt(cx,cz,h0),tb:0,by:null});
     }
   }
+  W.oceanCells=W.cells.filter(c=>c.bm===10&&c.st===4);
   for(const st of data.things||[]){
     const d=Object.assign({},st.data||{});
     if(st.kind==='agua'){const p=PONDS.find(p=>Math.abs(p.x-st.x)<.01&&Math.abs(p.z-st.z)<.01);if(p)d.pond=p}
@@ -121,7 +136,7 @@ function deserializeWorld(data){
       id:sa.id,spk,sp:SP[spk],x:sa.x,z:sa.z,yaw:sa.yaw||0,y:hgt(sa.x,sa.z),
       name:sa.name||null,lex:sa.lex||{},words:new Set(sa.words||[]),phon:sa.phon||{c:['k','p','t'],v:['a','o','i'],e:['n','s']},
       n:Object.assign({fome:.6,sede:.6,energia:.6,calor:.6,saude:1,social:.5},sa.n||{}),
-      curio:sa.curio!=null?sa.curio:.6,
+      curio:sa.curio!=null?sa.curio:.6,oxygen:sa.oxygen!=null?clamp(sa.oxygen):1,
       hands:sa.hands||[],handT:sa.handT||0,mem:sa.mem||{},seen:{},kinds:new Set(sa.kinds||[]),others:{},
       tried:sa.tried||{},recipes:sa.recipes||{},inventions:sa.inventions||[],
       lessons:sa.lessons||{burned:false},fear:Object.assign({fire:0,wolf:0},sa.fear||{}),
@@ -160,6 +175,13 @@ function deserializeWorld(data){
       makeAnimal(spk,x,z);
     }
   }
+  if(!(data.faunaV>=3)){
+    for(const spk of NEW_MARINE_SPECIES){
+      if(W.animals.some(a=>a.spk===spk))continue;
+      const p=marineSpawnPoint();
+      if(p)makeAnimal(spk,p.x,p.z);
+    }
+  }
   if(!W.things.some(t=>!t.gone&&t.kind==='mural'))addThing('mural',-6,5,{});
   if(!W.things.some(t=>!t.gone&&t.kind==='quadro'))addThing('quadro',7,-5,{});
   ensureWaterThings();
@@ -171,16 +193,33 @@ function deserializeWorld(data){
     tr.center=tr.center||{x:0,z:0};tr.members=tr.members.filter(id=>W.animals.some(a=>a.id===id));
     tr.faith=tr.faith||{element:'floresta',name:'ka',gloss:'a mata que dá e toma',piety:.2,prayers:[]};
     tr.culture=tr.culture||{element:'floresta',style:0,label:'da floresta'};
+    if(tr.aquatic==null){
+      const members=tr.members.map(id=>W.animals.find(a=>a.id===id)).filter(Boolean);
+      tr.aquatic=members.length>1&&members.every(a=>a.sp.marine)&&isOcean(tr.center.x,tr.center.z);
+    }
     // tribos antigas ganham portão e números
     const stock=W.things.find(t=>!t.gone&&t.id===tr.stockadeId);
-    if(!W.things.some(t=>!t.gone&&t.kind==='portao'&&t.data&&t.data.tribe===tr.id)){
+    if(!tr.aquatic&&!W.things.some(t=>!t.gone&&t.kind==='portao'&&t.data&&t.data.tribe===tr.id)){
       const ga=stock&&stock.data&&stock.data.gate!=null?stock.data.gate:0;
       const g=addThing('portao',tr.center.x+Math.cos(ga)*5.6,tr.center.z+Math.sin(ga)*5.6,{tribe:tr.id,gate:ga,open:0});
       tr.gateId=g.id;
     }
   }
   W.tribes=W.tribes.filter(tr=>tr.members.length>=2);
+  for(const a of W.animals)if(a.tribeId&&!W.tribes.some(tr=>tr.id===a.tribeId))a.tribeId=null;
   for(const tr of W.tribes){
+    if(tr.aquatic){
+      const reefs=W.things.filter(t=>!t.gone&&t.kind==='coral'&&t.data&&t.data.tribe===tr.id);
+      if(!reefs.length){
+        tr.reefIds=[];
+        for(let i=0;i<6;i++){
+          const an=i*TAU/6,d=4;
+          const reef=addThing('coral',tr.center.x+Math.cos(an)*d,tr.center.z+Math.sin(an)*d,{tribe:tr.id,reef:true,hue:i%4});
+          tr.reefIds.push(reef.id);
+        }
+      }else tr.reefIds=reefs.map(t=>t.id);
+      continue;
+    }
     if(!W.things.some(t=>!t.gone&&t.kind==='fogo'&&t.data&&t.data.tribe===tr.id)){
       const f=addThing('fogo',tr.center.x,tr.center.z,{tribe:tr.id,contained:true,fuel:1e9,hearth:true,t0:W.t});
       tr.hearthId=f.id;
@@ -198,21 +237,26 @@ function deserializeWorld(data){
     const roster=(CFG&&CFG.species&&CFG.species.length?CFG.species:SPECIES_ORDER);
     for(const spk of roster){
       if(W.animals.some(a=>a.spk===spk))continue;
-      const ang=rnd(0,TAU),rr=rnd(4,8);
-      makeAnimal(spk,Math.cos(ang)*rr,Math.sin(ang)*rr);
+      let p;
+      if(SP[spk].marine)p=marineSpawnPoint();
+      else{const an=rnd(0,TAU),rr=rnd(4,8);p={x:Math.cos(an)*rr,z:Math.sin(an)*rr}}
+      if(p)makeAnimal(spk,p.x,p.z);
     }
     // saves antigos ganham mais moradores (só uma vez: fica gravado)
     const target=Math.max(W.animals.length,(CFG&&CFG.animals)||30);
     let ci=0;
     while(W.animals.length<target&&ci<80){
       const spk=roster[(W.animals.length+ci)%roster.length];ci++;
-      const ang=rnd(0,TAU),rr=rnd(8,22);
-      makeAnimal(spk,Math.cos(ang)*rr,Math.sin(ang)*rr);
+      let p;
+      if(SP[spk].marine)p=marineSpawnPoint();
+      else{const an=rnd(0,TAU),rr=rnd(8,22);p={x:Math.cos(an)*rr,z:Math.sin(an)*rr}}
+      if(p)makeAnimal(spk,p.x,p.z);
     }
   }
   if(migrated)seedExpansion();
   if(!(data.biomesV>=2)){const nb=ensureNewBiomes();W.migratedBiomes=nb}
   else W.migratedBiomes=null;
+  W.dominantBiome=dominantBiomeId(W.cells);
   teachBoards();
   let maxId=0;
   for(const t of W.things)maxId=Math.max(maxId,t.id);
@@ -245,7 +289,7 @@ function saveDateStr(ts){
 }
 
 /* ---------------- lobby de novo mundo ---------------- */
-const LOBBY_BIOMES=[[0,'floresta'],[2,'savana seca'],[4,'taiga'],[5,'pantanal'],[6,'pântano'],[8,'deserto'],[9,'cerrado']];
+const LOBBY_BIOMES=[[0,'floresta'],[2,'savana seca'],[4,'taiga'],[5,'pantanal'],[6,'pântano'],[8,'deserto'],[9,'cerrado'],[10,'oceano']];
 function showTutorialPrompt(){
   try{if(localStorage.getItem('florestaTutorial.v1'))return}catch(err){}
   const prompt=document.getElementById('tutorialPrompt');
@@ -346,13 +390,13 @@ function openLobby(els,mode){
     return;
   }
     W=newWorld((Math.random()*1e9)|0);
-    V.bindWorld(W);UI.bindWorld(W);
+    V.bindWorld(W);cleanTreesFromWater();UI.bindWorld(W);
     setTimeout(()=>showTutorialPrompt(),900);
     V.setFollow(false);
     const bf=document.getElementById('btnFollow');
     if(bf){bf.classList.remove('on');bf.textContent='seguir'}
     saveNow();
-    UI.toast(`Mundo novo: mapa ${SIZES[cfg.size].label} (${GN}×${GN}), ${W.animals.length} bichos${cfg.wolfDays>0?', lobos a cada '+cfg.wolfDays+' dia(s)':', sem lobos'}.`);
+    UI.toast(`Mundo novo: mapa ${SIZES[cfg.size].label} (${GN}×${GN}), ${W.animals.length} bichos; bioma dominante: ${BIOME_NAMES[W.dominantBiome]}${cfg.wolfDays>0?', lobos a cada '+cfg.wolfDays+' dia(s)':', sem lobos'}.`);
   };
   btnBack.onclick=()=>{lobby.classList.add('hide')};
 }
@@ -386,10 +430,12 @@ function startRun(els,saved){
     catch(err){console.warn('não consegui carregar o save:',err);W=null}
   }
   if(!W)W=newWorld((Math.random()*1e9)|0);
+  seedAquaticHabitats();
 
   V=initView(canvas);
   UI=initUI();
   V.bindWorld(W);
+  cleanTreesFromWater();
   UI.bindWorld(W);
 
   // restaura seleção / câmera / velocidade
@@ -447,7 +493,7 @@ function startRun(els,saved){
       try{
         const data=JSON.parse(r.result);
         W=deserializeWorld(data);
-        V.bindWorld(W);UI.bindWorld(W);
+        V.bindWorld(W);cleanTreesFromWater();UI.bindWorld(W);
         V.setFollow(false);btnFollow.classList.remove('on');btnFollow.textContent='seguir';
         saveNow();UI.toast('Save importado: '+saveDateStr(data.ts));
       }catch(err){console.warn(err);UI.toast('Arquivo de save inválido.')

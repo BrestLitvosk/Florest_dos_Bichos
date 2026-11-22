@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <title>Floresta — bichos que aprendem</title>
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<link rel="stylesheet" href="css/style.css">
+<link rel="stylesheet" href="css/style.css?v=20261122u">
 </head>
 <body>
 <canvas id="world"></canvas>
@@ -27,7 +27,7 @@
     </div>
     <div class="filebtns">
       <button id="btnFollow" title="Câmera segue o bicho selecionado (F)">seguir</button>
-      <button id="btnCodex" title="Quadros, escritas, tribos, fé e estudos">cultura</button>
+      <button id="btnCodex" title="Cultura, objetivos, eras e histórias">cultura</button>
       <button id="btnHud" title="Abrir painel rápido">mais</button>
       <button id="btnShare" title="Compartilhar o jogo com amigos">compartilhar</button>
     </div>
@@ -46,6 +46,7 @@
     <button data-tab="music">músicas</button>
     <button data-tab="wolves">lobos e batalhas</button>
     <button data-tab="critters">bichos e equipamentos</button>
+    <button data-tab="journey">jornada e objetivos</button>
     <div class="hsep"></div>
     <button id="btnExport">salvar .json</button>
     <button id="btnImport">importar</button>
@@ -190,6 +191,8 @@
             <button data-tab="music">músicas</button>
             <button data-tab="wolves">lobos</button>
             <button data-tab="critters">bichos</button>
+            <button data-tab="journey">jornada</button>
+            <button data-tab="suggestions">sugestões</button>
           </div>
         </details>
       </nav>
@@ -215,6 +218,28 @@
       <div class="tabPane hide" data-pane="music"><div id="musicList"></div></div>
       <div class="tabPane hide" data-pane="wolves"><div id="wolvesList"></div></div>
       <div class="tabPane hide" data-pane="critters"><div id="crittersList"></div></div>
+      <div class="tabPane hide" data-pane="journey"><div id="journeyList"></div></div>
+      <div class="tabPane hide" data-pane="suggestions">
+        <section class="suggestionIntro">
+          <h2>Uma ideia para a floresta?</h2>
+          <p>Envie uma sugestão para ajudar o jogo a crescer. O FormSubmit encaminha a mensagem ao criador; evite incluir dados pessoais ou informações sensíveis.</p>
+        </section>
+        <form id="suggestionForm" action="https://formsubmit.co/ajax/floresta.dos.bichos.ia@gmail.com" method="POST">
+          <input type="hidden" name="_subject" value="Sugestão para Floresta dos Bichos IA">
+          <input class="suggestionHoneypot" type="text" name="_honey" tabindex="-1" autocomplete="off" aria-hidden="true">
+          <label for="suggestionName">Seu nome <span>(opcional)</span></label>
+          <input id="suggestionName" type="text" name="name" maxlength="80" autocomplete="name" placeholder="Como podemos chamar você?">
+          <label for="suggestionEmail">Email para resposta <span>(opcional)</span></label>
+          <input id="suggestionEmail" type="email" name="email" maxlength="254" autocomplete="email" placeholder="voce@exemplo.com">
+          <label for="suggestionMessage">Sua sugestão</label>
+          <textarea id="suggestionMessage" name="message" rows="5" minlength="10" maxlength="1500" required placeholder="Conte sua ideia (10 a 1500 caracteres)."></textarea>
+          <div class="suggestionActions">
+            <button class="primarybtn" type="submit">enviar sugestão</button>
+            <span id="suggestionStatus" role="status" aria-live="polite"></span>
+          </div>
+          <p class="suggestionPrivacy">O envio usa o serviço externo FormSubmit. O endereço de destino fica visível no código público do jogo.</p>
+        </form>
+      </div>
     </div>
   </div>
 </div>
@@ -297,10 +322,10 @@
   </div>
 </div>
 
-<script src="js/three.min.js?v=20261122h"></script>
-<script src="js/sim.js?v=20261122h"></script>
-<script src="js/view.js?v=20261122h"></script>
-<script src="js/ui.js?v=20261122h"></script>
-<script src="js/game.js?v=20261122h"></script>
+<script src="js/three.min.js?v=20261122u"></script>
+<script src="js/sim.js?v=20261122u"></script>
+<script src="js/view.js?v=20261122u"></script>
+<script src="js/ui.js?v=20261122u"></script>
+<script src="js/game.js?v=20261122u"></script>
 </body>
 </html>
