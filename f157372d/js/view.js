@@ -736,18 +736,23 @@ function initView(canvas){
     const bw=stout?1.26:aquatic?1.16:compact?.98:1.04;
     const bh=bird?.72:stout?1.04:compact?1.03:.88;
     const bl=bird?1.08:long?1.28:compact?.94:.98;
-    // corpo bolota + barriga clara
-    part(GEO.sphere,bodyM,bw*.64,bh*.63,bl*.68,0,.5,0,g);
-    part(GEO.sphere,lightM,bw*.4,bh*.3,bl*.4,0,.38,.16,g);
+    const specializedAnatomy=spk==='sapo'||spk==='calango'||spk==='cascavel'||spk==='escorpiao'||spk==='joaninha'||spk==='besouro_rinoceronte'||spk==='besouro_tartaruga'||spk==='besouro_fungo'||spk==='cigarra_bola'||spk==='rola_bosta'||spk==='serra_pau'||spk==='garca'||spk==='coruja'||spk==='tamandua';
+    // corpo bolota só para espécies que ainda usam anatomia geral
+    if(!specializedAnatomy){
+      part(GEO.sphere,bodyM,bw*.64,bh*.63,bl*.68,0,.5,0,g);
+      part(GEO.sphere,lightM,bw*.4,bh*.3,bl*.4,0,.38,.16,g);
+    }
     // cabeça fundida no corpo (estilo ouriço)
     const headY=.5+bh*.34,headZ=bl*.48;
-    part(GEO.sphere,bodyM,.41,.37,.39,0,headY,headZ,g);
-    part(GEO.sphere,lightM,.24,.19,.2,0,headY-.05,headZ+.24,g);
-    // nariz redondo escuro
-    part(GEO.sphere,blackM,.06,.05,.055,0,headY-.02,headZ+.4,g);
-    part(GEO.sphere,glintM,.017,.012,.012,.018,headY-.002,headZ+.442,g);
+    if(!specializedAnatomy){
+      part(GEO.sphere,bodyM,.41,.37,.39,0,headY,headZ,g);
+      part(GEO.sphere,lightM,.24,.19,.2,0,headY-.05,headZ+.24,g);
+      // nariz redondo escuro
+      part(GEO.sphere,blackM,.06,.05,.055,0,headY-.02,headZ+.4,g);
+      part(GEO.sphere,glintM,.017,.012,.012,.018,headY-.002,headZ+.442,g);
+    }
     // olhos grandes: esclera branca + pupila preta + brilhinho
-    for(const sx of [-1,1]){
+    if(!specializedAnatomy)for(const sx of [-1,1]){
       const ex=.155*sx;
       eyepush(part(GEO.sphere,eyeM,.095,.105,.06,ex,headY+.09,headZ+.315,g));
       eyepush(part(GEO.sphere,pupilM,.05,.056,.035,ex,headY+.09,headZ+.365,g));
@@ -757,9 +762,9 @@ function initView(canvas){
         br.rotation.z=-sx*.12;
       }
     }
-    if(!insect)for(const sx of [-1,1])part(GEO.sphere,pinkM,.048,.032,.02,sx*.225,headY-.075,headZ+.3,g);
+    if(!specializedAnatomy&&!insect)for(const sx of [-1,1])part(GEO.sphere,pinkM,.048,.032,.02,sx*.225,headY-.075,headZ+.3,g);
     // orelhinhas
-    if(!insect){
+    if(!specializedAnatomy&&!insect){
       const eh=spk==='cuica'?.17:spk==='esquilo'?.2:spk==='pug'?.13:spk==='feneco'?.34:spk==='calango'||spk==='cascavel'?.04:.1;
       const ew=spk==='cuica'?.15:spk==='esquilo'?.11:spk==='feneco'?.2:spk==='calango'||spk==='cascavel'?.05:.1;
       for(const sx of [-1,1]){

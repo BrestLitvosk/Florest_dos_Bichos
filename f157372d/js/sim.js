@@ -1496,6 +1496,20 @@ function nearestBlockedFix(a){
         a.z=t.z+Math.sin(an)*(rr+(d>rr?.65:-.65));
       }}
   }
+  // Separação entre bichos: impede que modelos reais passem uns por cima dos outros.
+  for(const other of W.animals){
+    if(other===a||other.gone)continue;
+    const dx=a.x-other.x,dz=a.z-other.z;
+    const d=Math.hypot(dx,dz);
+    const ra=(a.sp.sz||1)*.38+(a.sp.cap||1)*.035;
+    const rb=(other.sp.sz||1)*.38+(other.sp.cap||1)*.035;
+    const min=ra+rb;
+    if(d>0&&d<min){
+      const nx=dx/d,nz=dz/d,push=(min-d)*.55;
+      a.x+=nx*push;a.z+=nz*push;
+      other.x-=nx*push*.35;other.z-=nz*push*.35;
+    }
+  }
   a.x=clamp(a.x,-(HALF-1.5),HALF-1.5);a.z=clamp(a.z,-(HALF-1.5),HALF-1.5);
 }
 function curSpeed(a){
