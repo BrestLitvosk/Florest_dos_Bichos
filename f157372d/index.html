@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Floresta — bichos que aprendem</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<canvas id="world"></canvas>
+
+<div id="app">
+  <header id="topbar">
+    <div class="brand"><span class="dot"></span>FLORESTA</div>
+    <div class="clocks">
+      <span id="dayLabel">Dia 1</span>
+      <span id="clockLabel">06:36</span>
+      <span id="weatherLabel">céu limpo</span>
+      <span id="crisisLabel"></span>
+    </div>
+    <div class="speed" id="speedBtns">
+      <button data-sp="0" title="Pausa (espaço)">pausa</button>
+      <button data-sp="1" class="on">1×</button>
+      <button data-sp="2">2×</button>
+      <button data-sp="4">4×</button>
+      <button data-sp="8">8×</button>
+    </div>
+    <div class="filebtns">
+      <button id="btnFollow" title="Câmera segue o bicho selecionado (F)">seguir</button>
+      <button id="btnCodex" title="Quadros, escritas, tribos, fé e estudos">cultura</button>
+      <button id="btnCritters" title="Quem está com o quê, relações e chegadas de bichos">bichos</button>
+      <button id="btnWolves" title="Lobos, ataques e defesas">lobos</button>
+      <button id="btnMusic" title="Tocar as músicas compostas pelas tribos">música</button>
+      <button id="btnHud" title="Fechar e abrir os painéis">painéis</button>
+      <button id="btnExport" title="Baixar o save como arquivo">salvar .json</button>
+      <button id="btnImport" title="Carregar um save exportado">importar</button>
+      <button id="btnNew" title="Começar uma floresta nova (apaga o save)">novo mundo</button>
+      <button id="btnShare" title="Como abrir o jogo para os amigos na mesma rede">compartilhar</button>
+    </div>
+  </header>
+
+  <div id="hudMenu" class="hide">
+    <b>Painéis</b>
+    <label><input type="checkbox" data-panel="roster" checked> lista de bichos</label>
+    <label><input type="checkbox" data-panel="detail" checked> detalhe do bicho</label>
+    <label><input type="checkbox" data-panel="ticker" checked> eventos</label>
+    <div class="hsep"></div>
+    <button data-tab="boards">quadros e escritas</button>
+    <button data-tab="tribes">tribos</button>
+    <button data-tab="faith">religião</button>
+    <button data-tab="studies">pesquisas e ferramentas</button>
+    <div class="hsep"></div>
+    <button data-tab="langs">línguas</button>
+    <button data-tab="ruins">ruínas</button>
+    <button data-tab="minds">mentes e capacidades</button>
+    <button data-tab="music">músicas</button>
+    <button data-tab="wolves">lobos e batalhas</button>
+    <button data-tab="critters">bichos e equipamentos</button>
+  </div>
+
+  <aside id="roster">
+    <button class="panelClose" data-panel="roster" title="Fechar lista">×</button>
+    <h2>Os bichos</h2>
+    <div id="rosterList"></div>
+    <p class="tip"><span class="desktopControls">Clique num bicho para ver o que ele pensa. Arraste para girar · botão direito (ou Shift) move · WASD move · Q/E giram · roda dá zoom.</span><span class="touchControls">Toque num bicho para conhecer seus pensamentos. Arraste para girar · use dois dedos para mover e apertar para dar zoom.</span></p>
+    <div id="saveInfo">sem save ainda</div>
+  </aside>
+
+  <section id="detail">
+    <button class="panelClose" data-panel="detail" title="Fechar detalhe">×</button>
+    <div id="dHead">
+      <div id="dName">—</div>
+      <div id="dSub">—</div>
+    </div>
+    <div class="box actbox">
+      <h3>Ações agora</h3>
+      <div id="actions"></div>
+    </div>
+    <div class="box selfbox">
+      <h3>Quem ele é</h3>
+      <div id="pers" class="moods"></div>
+      <div id="persDream" class="persdream"></div>
+    </div>
+    <div class="box wishbox">
+      <h3>Desejo</h3>
+      <div id="wish">…</div>
+    </div>
+    <div class="box moodbox">
+      <h3>Sentimentos</h3>
+      <div id="feel" class="moods"></div>
+      <h3 class="subh">Vontades</h3>
+      <div id="wants"></div>
+    </div>
+    <div class="box grow">
+      <h3>Pensamentos</h3>
+      <div id="thoughts" class="scroll"></div>
+    </div>
+    <div class="row2">
+      <div class="box">
+        <h3>Palavras dele</h3>
+        <div id="lex" class="scroll small"></div>
+      </div>
+      <div class="box">
+        <h3>Nas mãos</h3>
+        <div id="hands"></div>
+      </div>
+    </div>
+    <div class="box">
+      <h3>Equipado</h3>
+      <div id="gearBox"></div>
+    </div>
+    <div class="box">
+      <h3>Música e capacidades</h3>
+      <div id="musicBox" class="scroll small"></div>
+    </div>
+    <div class="box">
+      <h3>Mente neural</h3>
+      <div id="mindBox" class="scroll small"></div>
+      <button id="mindHelp" class="ghostbtn">como funciona?</button>
+    </div>
+    <div class="box">
+      <h3>Ruínas</h3>
+      <div id="ruinsBox" class="scroll small"></div>
+    </div>
+    <div class="box">
+      <h3>Ideias na cabeça</h3>
+      <div id="ideas"></div>
+    </div>
+    <div class="box">
+      <h3>O que aprendeu</h3>
+      <div id="mem" class="scroll small"></div>
+    </div>
+    <div class="box">
+      <h3>Invenções</h3>
+      <div id="invent" class="scroll small"></div>
+    </div>
+    <div class="box">
+      <h3>Na internet</h3>
+      <div id="web" class="scroll small"></div>
+      <div id="webInfo" class="webinfo"></div>
+    </div>
+    <div class="box">
+      <h3>Ferramentas e descobertas</h3>
+      <div id="tools" class="scroll small"></div>
+    </div>
+    <div class="box">
+      <h3>Tribo e fé</h3>
+      <div id="tribeBox"></div>
+    </div>
+    <div class="box">
+      <h3>Idiomas da floresta</h3>
+      <div id="langs"></div>
+    </div>
+  </section>
+
+  <div id="ticker">
+    <div class="evHead"><b>eventos</b><span id="evHint">clique para ir até o bicho</span></div>
+    <div id="evList"></div>
+  </div>
+  <div id="toast"></div>
+</div>
+
+<div id="codex" class="modal hide">
+  <div class="modalCard">
+    <div class="modalHead">
+      <b>Cultura da floresta</b>
+      <nav id="codexTabs">
+        <button data-tab="boards" class="on">quadros</button>
+        <button data-tab="writings">escritas</button>
+        <button data-tab="tribes">tribos</button>
+        <button data-tab="faith">religião</button>
+        <button data-tab="studies">estudos</button>
+        <button data-tab="langs">línguas</button>
+        <button data-tab="ruins">ruínas</button>
+        <button data-tab="minds">mentes</button>
+        <button data-tab="music">músicas</button>
+        <button data-tab="wolves">lobos</button>
+        <button data-tab="critters">bichos</button>
+      </nav>
+      <button id="codexClose" title="Fechar">×</button>
+    </div>
+    <div class="modalBody">
+      <div class="tabPane" data-pane="boards">
+        <div class="boardPick">
+          <button data-board="mural" class="on">mural</button>
+          <button data-board="quadro">quadro</button>
+          <span id="boardMeta" class="dimtxt"></span>
+        </div>
+        <canvas id="galleryCanvas" width="768" height="432"></canvas>
+        <div class="dimtxt">Clique num quadro do mundo para ver os riscos por perto. Esta aba mostra tudo o que já foi desenhado e escrito.</div>
+      </div>
+      <div class="tabPane hide" data-pane="writings"><div id="writingsList"></div></div>
+      <div class="tabPane hide" data-pane="tribes"><div id="tribesList"></div></div>
+      <div class="tabPane hide" data-pane="faith"><div id="faithList"></div></div>
+      <div class="tabPane hide" data-pane="studies"><div id="studiesList"></div></div>
+      <div class="tabPane hide" data-pane="langs"><div id="langsList"></div></div>
+      <div class="tabPane hide" data-pane="ruins"><div id="ruinsList"></div></div>
+      <div class="tabPane hide" data-pane="minds"><div id="mindsList"></div></div>
+      <div class="tabPane hide" data-pane="music"><div id="musicList"></div></div>
+      <div class="tabPane hide" data-pane="wolves"><div id="wolvesList"></div></div>
+      <div class="tabPane hide" data-pane="critters"><div id="crittersList"></div></div>
+    </div>
+  </div>
+</div>
+
+<div id="shareModal" class="modal hide">
+  <div class="modalCard" style="max-width:640px">
+    <div class="modalHead"><b>jogar com os amigos</b><button id="shareClose" style="margin-left:auto;padding:0 8px!important;font-size:18px!important">×</button></div>
+    <div class="modalBody" style="font-size:13px;line-height:1.55">
+      <p><b>Compartilhe este link com seu amigo:</b></p>
+      <p><code id="shareUrl">https://florestadosbichosia.vercel.app</code> <button id="shareCopy" class="primarybtn">copiar link</button> <span id="shareCopied" class="dimtxt"></span></p>
+      <p id="shareOnlineTip">O jogo está <b>publicado online</b> e funciona em qualquer navegador. O save fica guardado no navegador de cada pessoa.</p>
+      <p class="dimtxt">Para levar o seu mundo junto: use “salvar .json” e mande o arquivo para o amigo usar em “importar”.</p>
+    </div>
+  </div>
+</div>
+
+<div id="neuralModal" class="modal hide">
+  <div class="modalCard" style="max-width:620px">
+    <div class="modalHead"><b>como a mente deles decide</b><button id="neuralClose" style="margin-left:auto;padding:0 8px!important;font-size:18px!important">×</button></div>
+    <div class="modalBody" style="font-size:13px;line-height:1.6">
+      <p>Cada bicho é uma <b>rede pequena de votos</b>: ele lista o que poderia fazer agora (beber, comer, dormir, conversar, mexer em algo, construir…) e dá uma nota para cada ideia. A nota soma quatro coisas:</p>
+      <p><b>1. necessidade</b> — fome, sede, sono, frio, saúde e companhia pesam cada uma de um jeito;<br>
+      <b>2. memória</b> — o que já deu certo ou errado no passado (o “o que aprendeu”);<br>
+      <b>3. curiosidade e personalidade</b> — o traço dele (corajoso, medroso, curioso…) e a vontade de experimentar;<br>
+      <b>4. novidade</b> — coisas nunca tentadas ganham um empurrãozinho.</p>
+      <p>As notas viram <b>pesos</b> e ele sorteia uma ideia (não é sempre a maior: por isso às vezes erra e aprende). Depois ele cumpre passos: ir até o lugar, ficar, usar as mãos. Ao terminar, o resultado volta para a memória — se a necessidade melhorou, aquilo fica mais forte da próxima vez.</p>
+      <p>Ao lado dos pensamentos aparece o desenho dessa rede: as <b>bolinhas</b> são as ideias e o brilho é o peso. Clique num bicho e abra “Mente neural” para ver os votos, as capacidades e o que ele já sabe fazer.</p>
+      <p class="dimtxt">Nada disso é aleatório de verdade: é o mesmo laço necessidade → memória → escolha → consequência girando o tempo todo. Lobos, tribos e músicas usam o mesmo tipo de conta.</p>
+    </div>
+  </div>
+</div>
+
+<div id="musicBar" class="hide">
+  <span id="musicNow">—</span>
+  <button id="musicPrev" title="música anterior">‹</button>
+  <button id="musicNext" title="próxima música">›</button>
+  <button id="musicStop" title="parar a música">parar</button>
+</div>
+
+<input type="file" id="fileIn" accept="application/json,.json" hidden>
+
+<div id="lobby" class="modal hide">
+  <div class="modalCard" id="lobbyCard">
+    <div class="modalHead"><b>nova floresta</b><span class="dimtxt">escolha como o mundo nasce — o save atual é apagado</span></div>
+    <div class="modalBody" id="lobbyBody">
+      <div class="lobbyRow">
+        <span class="lobbyLabel">tamanho do mapa</span>
+        <div class="seg" id="lobbySize"></div>
+      </div>
+      <div class="lobbyRow">
+        <span class="lobbyLabel">quantos bichos</span>
+        <input type="range" id="lobbyAnimals" min="4" max="100" step="1" value="30">
+        <output id="lobbyAnimalsOut">30</output>
+      </div>
+      <div class="lobbyRow">
+        <span class="lobbyLabel">chegadas</span>
+        <label class="lobbyInline">a cada <input type="number" id="lobbyArrive" min="0" max="60" value="0"> dia(s) vem um bicho novo</label>
+        <label class="lobbyInline">até <input type="number" id="lobbyCap" min="4" max="200" value="80"> bichos</label>
+        <span class="dimtxt">0 = mundo fechado</span>
+      </div>
+      <div class="lobbyRow col">
+        <span class="lobbyLabel">espécies <small>clique para incluir ou tirar</small></span>
+        <div id="lobbySpecies" class="chips"></div>
+      </div>
+      <div class="lobbyRow">
+        <span class="lobbyLabel">lobos</span>
+        <label class="lobbyInline">voltam a cada <input type="number" id="lobbyWolfDays" min="0" max="90" value="10"> dia(s)</label>
+        <label class="lobbyInline">primeira visita no dia <input type="number" id="lobbyWolfFirst" min="0" max="90" value="10"></label>
+        <span class="dimtxt">0 = nunca</span>
+      </div>
+      <div class="lobbyRow col">
+        <span class="lobbyLabel">biomas</span>
+        <div id="lobbyBiomes" class="chips"></div>
+      </div>
+    </div>
+    <div class="lobbyFoot">
+      <button id="lobbyCancel" class="ghostbtn">voltar</button>
+      <button id="lobbyStart" class="primarybtn">começar a floresta</button>
+    </div>
+  </div>
+</div>
+
+<div id="intro">
+  <div class="introCard">
+    <div class="introTitle">FLORESTA</div>
+    <div class="introSub">bichos acordam sem saber de nada.</div>
+    <div id="introSteps"><span>1 · toque num bicho</span><span>2 · veja o que deseja</span><span>3 · descubra a floresta</span></div>
+<script src="js/three.min.js?v=20261122a"></script>
+<script src="js/sim.js?v=20261122a"></script>
+<script src="js/view.js?v=20261122a"></script>
+<script src="js/ui.js?v=20261122a"></script>
+<script src="js/game.js?v=20261122a"></script>
+</body>
+</html>
