@@ -140,11 +140,8 @@ function updateLandMountains(){
 }
 function oceanMoveAllowed(marine,x,z,nextX,nextZ){
   if(!OCEAN_ZONE)return true;
+  if(marine)return true;
   const fromOcean=isOcean(x,z),nextOcean=isOcean(nextX,nextZ);
-  if(marine){
-    if(fromOcean)return nextOcean;
-    return coastDistance(nextX,nextZ)<coastDistance(x,z);
-  }
   if(!fromOcean)return !nextOcean;
   return coastDistance(nextX,nextZ)>coastDistance(x,z);
 }
@@ -167,10 +164,10 @@ function landReturnPoint(x,z){
 function repairAnimalOceanPositions(){
   if(!W||!OCEAN_ZONE)return;
   for(const a of W.animals){
-    if(a.taken)continue;
+    if(a.taken||a.sp.marine)continue;
     const inOcean=isOcean(a.x,a.z);
-    if(!!a.sp.marine===inOcean)continue;
-    const target=a.sp.marine?oceanReturnPoint(a.x,a.z):landReturnPoint(a.x,a.z);
+    if(!inOcean)continue;
+    const target=landReturnPoint(a.x,a.z);
     if(!target)continue;
     a.x=target.x;a.z=target.z;a.y=hgt(a.x,a.z);
     a.plan=null;a.cur=null;a.project=null;a.idle=0;a.state='idle';a.oxygen=1;
