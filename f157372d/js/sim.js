@@ -403,7 +403,7 @@ function newWorld(seed){
     if(q<.32)addThing('moita',p.x,p.z,{b:rint(2,5),rg:0,burn:0});
     else if(q<.58)addThing('flor',p.x,p.z,{});
     else if(q<.78)addThing('capim',p.x,p.z,{});
-    else if(q<.9)addThing('samambaia',p.x,p.z,{});
+    else if(q<.9)addThing('samambaia',p.x,p.z,{sc:rnd(.9,1.45)});
     else addThing(bm===6?'cogumelo_m':'cogumelo_v',p.x,p.z,{});
   }
   // mangues do pantanal e do pântano: árvores de raízes escoras
@@ -1531,24 +1531,36 @@ function runPlan(a,dt){
         if(!a.sideUntil||W.t>a.sideUntil){a.sideSign=-(a.sideSign||1);a.sideUntil=W.t+1.2}
         ang+=a.sideSign*1.35;
       }
-      // quem mora na tribo só atravessa a cerca pelo portão
+      // Quem mora na tribo só atravessa a cerca pelo portão.
+      // Rota ao longo do círculo da palissada até o vão marcado, em vez de empurrar o bicho contra a madeira.
       if(a.tribeId&&!s.gate){
         const tr=tribeOf(a);
         if(tr){
           const st=W.things.find(t=>!t.gone&&t.kind==='cerca'&&t.data.tribe===tr.id);
           if(st){
             const rr=st.data.r||5.6,ga=st.data.gate||0;
-            const d0=Math.hypot(a.x-tr.center.x,a.z-tr.center.z);
-            const px0=a.x+Math.cos(ang)*.9,pz0=a.z+Math.sin(ang)*.9;
-            const d1=Math.hypot(px0-tr.center.x,pz0-tr.center.z);
-            if((d0-rr)*(d1-rr)<0){
-              const aa=Math.atan2(a.z-tr.center.z,a.x-tr.center.x);
-              let diff=aa-ga;while(diff>Math.PI)diff-=TAU;while(diff<-Math.PI)diff+=TAU;
-              if(Math.abs(diff)>.26){
-                ang=Math.atan2(tr.center.z+Math.sin(ga)*rr-a.z,tr.center.x+Math.cos(ga)*rr-a.x);
-              }else if(!a.lessons.gate){
-                a.lessons.gate=true;
-                if(R()<.3)ev('🚪',`${nameTag(a)} aprendeu a entrar e sair de <b>${tr.name}</b> pelo portão.`,a);
+            const gx=tr.center.x+Math.cos(ga)*rr,gz=tr.center.z+Math.sin(ga)*rr;
+            const dNow=Math.hypot(a.x-tr.center.x,a.z-tr.center.z);
+            const dTarget=Math.hypot(tx-tr.center.x,tz-tr.center.z);
+            const outsideNow=dNow>rr-.15,outsideTarget=dTarget>rr+.15;
+            if(outsideNow!==outsideTarget){
+              if(Math.hypot(a.x-gx,a.z-gz)>1.15){
+                const aa=Math.atan2(a.z-tr.center.z,a.x-tr.center.x);
+                const gaAngle=ga;
+                const curDelta=((aa-gaAngle+Math.PI*3)%TAU)-Math.PI;
+                const side=curDelta>=0?-1:1;
+                ang=Math.atan2(gz-a.z,gx-a.x);
+                if(Math.abs(curDelta)>.25){
+                  const ringAn=gaAngle+side*Math.min(Math.abs(curDelta),.55);
+                  const rx=tr.center.x+Math.cos(ringAn)*rr,rz=tr.center.z+Math.sin(ringAn)*rr;
+                  ang=Math.atan2(rz-a.z,rx-a.x);
+                }
+              }else{
+                ang=Math.atan2(tz-a.z,tx-a.x);
+                if(!a.lessons.gate){
+                  a.lessons.gate=true;
+                  if(R()<.3)ev('🚪',`${nameTag(a)} aprendeu a entrar e sair de <b>${tr.name}</b> pelo portão.`,a);
+                }
               }
             }
           }

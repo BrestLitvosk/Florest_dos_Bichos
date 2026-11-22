@@ -49,6 +49,11 @@ canvas#world.dragging{cursor:grabbing}
 #topbar .speed button{padding:3px 7px;min-width:30px}
 #topbar .filebtns{display:flex;gap:4px;flex-wrap:nowrap}
 #topbar .filebtns button{padding:3px 8px;font-size:12px}
+.codexMore{position:relative;margin-left:auto}
+.codexMore summary{list-style:none;cursor:pointer;border:1px solid var(--line);border-radius:7px;padding:3px 9px;font-size:11.5px;color:var(--txt);background:rgba(255,255,255,.05)}
+.codexMore summary::-webkit-details-marker{display:none}
+.codexMoreMenu{position:absolute;right:0;top:calc(100% + 6px);z-index:10;width:150px;display:grid;gap:4px;padding:7px;background:var(--bg2);border:1px solid var(--line);border-radius:9px;box-shadow:0 12px 30px rgba(0,0,0,.35)}
+.codexMoreMenu button{text-align:left;width:100%}
 #saveInfo{position:static;font-size:10px}
 
 /* ---------- lista de bichos ---------- */
@@ -291,6 +296,8 @@ body.no-ticker #ticker{display:none}
   #musicBar{top:112px}
 }
 @media (max-width:600px){
+  .codexMore{margin-left:0}
+  .codexMoreMenu{position:fixed;left:8px;right:8px;width:auto;grid-template-columns:repeat(3,1fr)}
   #topbar .clocks #weatherLabel,#topbar .clocks #crisisLabel{display:none}
   #topbar .clocks{gap:7px}
   #roster{top:112px}

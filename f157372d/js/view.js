@@ -125,8 +125,11 @@ function initView(canvas){
         let nearWater=false;
         for(const p of PONDS)if(Math.hypot(px-p.x,pz-p.z)<p.r*1.7){nearWater=true;break}
         if(!nearWater&&riverDist(px,pz)<RIVER.width+6)nearWater=true;
-        if(nearWater&&vy<WATER_Y-.2)colorTmp.setRGB(.05,.115,.10);
-        else if(nearWater&&vy<WATER_Y+.3)colorTmp.setRGB(.27,.22,.14);
+        if(nearWater&&vy<WATER_Y-.2)colorTmp.setRGB(.05,.115+.06*Math.min(1,W.flood),.10+.04*Math.min(1,W.flood));
+        else if(nearWater&&vy<WATER_Y+.3){
+          const wet=.62+Math.min(.38,W.flood*.55);
+          colorTmp.setRGB(.27*wet,.22*wet+.08*W.flood,.14*wet+.05*W.flood);
+        }
         else cellColor(c,colorTmp);
         terrCol[vi*3]=colorTmp.r;terrCol[vi*3+1]=colorTmp.g;terrCol[vi*3+2]=colorTmp.b;
         vi++;
@@ -157,11 +160,33 @@ function initView(canvas){
   function buildWater(){
     while(waterG.children.length)waterG.remove(waterG.children[0]);
     for(const p of PONDS){
-      const g=new THREE.Mesh(new THREE.CircleGeometry(p.r*.99,40),
-        new THREE.MeshPhongMaterial({color:0x16405a,transparent:true,opacity:.92,shininess:120,specular:0x8fd0ff}));
-      g.rotation.x=-Math.PI/2;g.position.set(p.x,WATER_Y-.23,p.z);
+      const ringSegments=48;
+      const waterGeo=new THREE.CircleGeometry(p.r*.99,ringSegments);
+      const pos=waterGeo.attributes.position;
+      for(let i=1;i<pos.count;i++){
+        const x=pos.getX(i),z=pos.getY(i);
+        const dist=Math.hypot(x,z)/(p.r*.99);
+        const wobble=(Math.sin(Math.atan2(z,x)*5+p.x*.12)*.018+Math.sin(dist*9+p.z*.08)*.012)*p.r;
+        pos.setZ(i,wobble);
+      }
+      waterGeo.rotateX(-Math.PI/2);
+      const waterMat=new THREE.MeshPhongMaterial({
+        color:p.marsh?0x1b5a50:0x16405a,transparent:true,opacity:.9,
+        shininess:160,specular:p.marsh?0x86cbb2:0x8fd0ff,side:THREE.DoubleSide,depthWrite:false
+      });
+      const g=new THREE.Mesh(waterGeo,waterMat);
+      g.position.set(p.x,WATER_Y-.23,p.z);
+      g.userData.waterBase=p.r;
       if(p.marsh){g.userData.marsh=true;g.userData.baseR=p.r}
       waterG.add(g);
+
+      const edge=new THREE.Mesh(
+        new THREE.RingGeometry(p.r*.94,p.r*1.02,ringSegments),
+        new THREE.MeshBasicMaterial({color:p.marsh?0x5f7e4d:0x6a8f82,transparent:true,opacity:.34,side:THREE.DoubleSide,depthWrite:false})
+      );
+      edge.rotation.x=-Math.PI/2;edge.position.set(p.x,WATER_Y-.24,p.z);
+      edge.userData.marshEdge=!!p.marsh;edge.userData.edgeBase=p.r;
+      waterG.add(edge);
     }
     // rio
     const N=Math.ceil((HALF*2-10)/2),z0=-HALF+5,z1=HALF-5;
@@ -418,11 +443,18 @@ function initView(canvas){
           const an=i*TAU/N;
           if(Math.abs(((an-gate+Math.PI*3)%TAU)-Math.PI)<.22)continue;
           const x=Math.cos(an)*rad,z=Math.sin(an)*rad;
-          const st=part(GEO.cyl,MAT.woodDark,.07,2.1,.07,x,1.0,z,g);
-          st.rotation.z=Math.cos(an)*.08;st.rotation.x=-Math.sin(an)*.08;
-          const tp=part(GEO.cone,MAT.wood,.09,.28,.09,x,2.12,z,g);
+          const st=part(GEO.cyl,MAT.woodDark,.075+(i%3)*.012,2.15+(i%4)*.08,.075+(i%2)*.012,x,1.05,z,g);
+          st.rotation.z=Math.cos(an)*(.06+(i%3)*.018);st.rotation.x=-Math.sin(an)*(.06+(i%2)*.018);
+          const tp=part(GEO.cone,MAT.wood,.105,.34,.105,x,2.2+(i%4)*.05,z,g);
           tp.rotation.z=Math.cos(an)*.08;
-          if(i%2===0){const a2=an+TAU/N;const rl=part(GEO.cyl,MAT.wood,.035,rad*TAU/N*1.02,.035,Math.cos(an+TAU/N/2)*rad,1.55,Math.sin(an+TAU/N/2)*rad,g);rl.rotation.y=-an-TAU/N/2;rl.rotation.z=Math.PI/2}
+          if(i%2===0){
+            const a2=an+TAU/N;
+            const midAn=an+TAU/N/2;
+            for(const hy of [.72,1.42]){
+              const rl=part(GEO.cyl,MAT.wood,.038,rad*TAU/N*1.05,.038,Math.cos(midAn)*rad,hy,Math.sin(midAn)*rad,g);
+              rl.rotation.y=-midAn-TAU/N/2;rl.rotation.z=Math.PI/2;
+            }
+          }
         }
         break;}
       case 'totem':{
@@ -493,6 +525,7 @@ function initView(canvas){
       case 'pilha':case 'abrigo':
         buildPile(t,g);break;
       case 'cabana':buildCabana(t,g);break;
+      case 'casa':buildTribalHouse(t,g);break;
       case 'torre':buildTower(t,g);break;
       case 'celeiro':buildBarn(t,g);break;
       case 'ponte':buildBridge(t,g);break;
@@ -603,6 +636,27 @@ function initView(canvas){
       for(let i=0;i<4;i++){const m=part(GEO.cyl,MAT.wood,.05,.6,.05,(Math.random()-.5)*.6,y+.22,(Math.random()-.5)*.6,g);m.rotation.z=(Math.random()-.5)*.7}
     }
   }
+  function buildTribalHouse(t,g){
+    const d=t.data||{},mat=d.mat||'madeira',style=d.style||0;
+    const baseMat=mat==='pedra'?MAT.stoneDark:mat==='arenito'?MAT.cactus2:MAT.woodDark;
+    const trimMat=mat==='pedra'?MAT.stone:mat==='arenito'?MAT.cactus2:MAT.wood;
+
+    part(GEO.box,baseMat,1.85,.72,1.55,0,.36,0,g);
+    part(GEO.box,trimMat,.12,1.05,.12,-1.45,.52,-1.02,g);
+    part(GEO.box,trimMat,.12,1.05,.12,1.45,.52,-1.02,g);
+    part(GEO.box,trimMat,.12,1.05,.12,-1.45,.52,.98,g);
+    part(GEO.box,trimMat,.12,1.05,.12,1.45,.52,.98,g);
+
+    const roof=part(GEO.cone,roofMat(t),2.05,1.28,1.7,0,1.55,0,g);roof.rotation.y=style*TAU/3;
+    part(GEO.cone,roofMat(t),.75,.58,.62,0,2.42,0,g);
+    part(GEO.box,MAT.hole,.58,.92,.08,0,.46,1.0,g);
+    part(GEO.box,trimMat,.7,.08,.12,0,.13,1.05,g);
+
+    for(let i=0;i<3;i++){
+      const an=i*TAU/3+style*.7;
+      part(GEO.cyl,trimMat,.035,.75,.035,Math.cos(an)*1.22,.38,Math.sin(an)*1.22,g).rotation.z=.15;
+    }
+  }
   function buildCabana(t,g){
     for(const [x,z] of [[-1.05,.62],[1.05,.62],[-1.05,-.62],[1.05,-.62]])part(GEO.cyl,MAT.wood,.09,1.9,.09,x,.95,z,g);
     for(let i=0;i<7;i++){
@@ -676,7 +730,12 @@ function initView(canvas){
     const insect=sz<.65;
     const stout=spk==='vombate'||spk==='porco_espinho'||spk==='capivara';
     const long=spk==='serra_pau'||spk==='lontra'||spk==='nutria';
-    const bw=stout?1.22:1.04,bh=stout?1.0:.88,bl=long?1.18:.98;
+    const aquatic=spk==='capivara'||spk==='nutria'||spk==='lontra'||spk==='guaxinim';
+    const compact=spk==='marmota'||spk==='porco_india'||spk==='prea'||spk==='pug'||spk==='paca'||spk==='vombate'||spk==='cotia';
+    const bird=spk==='coruja'||spk==='garca';
+    const bw=stout?1.26:aquatic?1.16:compact?.98:1.04;
+    const bh=bird?.72:stout?1.04:compact?1.03:.88;
+    const bl=bird?1.08:long?1.28:compact?.94:.98;
     // corpo bolota + barriga clara
     part(GEO.sphere,bodyM,bw*.64,bh*.63,bl*.68,0,.5,0,g);
     part(GEO.sphere,lightM,bw*.4,bh*.3,bl*.4,0,.38,.16,g);
@@ -719,11 +778,23 @@ function initView(canvas){
         m.lookAt(new THREE.Vector3(bx*2.2,by+sy*.9,bz*2.2));m.rotateX(Math.PI/2);
       }
     }
-    if(spk==='joaninha'){
-      part(GEO.sphere,bodyM,.63,.36,.72,0,.6,-.06,g);
-      for(const [x,y,z] of [[-.22,.84,-.12],[.22,.84,-.12],[-.12,.87,.16],[.14,.85,-.32]])part(GEO.sphere,blackM,.065,.045,.065,x,y,z,g);
-      for(const sx of [-1,1]){const a=part(GEO.cyl,blackM,.012,.34,.012,sx*.3,.16,.12,g);a.rotation.z=sx*.5}
-    }else if(spk==='besouro_rinoceronte'||spk==='besouro_tartaruga'||spk==='besouro_fungo'){
+    if(spk==='joaninha'||spk==='besouro_rinoceronte'||spk==='besouro_tartaruga'||spk==='besouro_fungo'||spk==='cigarra_bola'||spk==='rola_bosta'||spk==='serra_pau'){
+      const beetleRed=spk==='joaninha';
+      const shellMat=beetleRed?bodyM:(spk==='besouro_tartaruga'?lightM:darkM);
+      part(GEO.sphere,shellMat,.68,.30,.78,0,.64,-.10,g);
+      part(GEO.sphere,blackM,.38,.20,.34,0,.86,.42,g);
+      part(GEO.box,blackM,.015,.012,.72,0,.88,-.08,g);
+      if(beetleRed){
+        for(const [x,z] of [[-.28,.24],[.28,.24],[-.18,-.18],[.18,-.18],[0,.50]])part(GEO.sphere,blackM,.07,.055,.06,x,.94,z,g);
+      }
+      for(const sx of [-1,1]){
+        const antenna=part(GEO.cyl,blackM,.012,.34,.012,sx*.10,.96,.66,g);antenna.rotation.z=sx*.45;antenna.rotation.x=-.32;
+        const wingMat=new THREE.MeshLambertMaterial({color:beetleRed?0xc8402a:col.clone().multiplyScalar(.82),transparent:true,opacity:.82});
+        part(GEO.sphere,wingMat,.48,.055,.62,sx*.36,.82,.14,g).rotation.z=sx*.38;
+      }
+      if(spk==='besouro_rinoceronte'){const horn=part(GEO.cone,darkM,.075,.58,.075,0,.92,.78,g);horn.rotation.x=-.72}
+      if(spk==='serra_pau')for(const sx of [-1,1]){const a=part(GEO.cyl,blackM,.009,.56,.009,sx*.16,1.02,.58,g);a.rotation.z=sx*.62;a.rotation.x=-.48}
+    }else if(spk==='besouro_rinoceronte'||spk==='besouro_tartaruga'||spk==='besouro_fungo'||spk==='cigarra_bola'||spk==='rola_bosta'||spk==='serra_pau'){
       part(GEO.sphere,darkM,.58,.36,.66,0,.68,-.04,g);
       if(spk==='besouro_rinoceronte'){const h=part(GEO.cone,darkM,.09,.5,.09,0,headY+.22,headZ+.25,g);h.rotation.x=-.9}
       if(spk==='besouro_tartaruga')part(GEO.torus,lightM,.5,.5,.5,0,.72,-.04,g);
@@ -737,11 +808,19 @@ function initView(canvas){
     }else if(spk==='serra_pau'){
       for(const sx of [-1,1]){const a=part(GEO.cyl,blackM,.011,.4,.011,sx*.08,headY+.26,headZ+.14,g);a.rotation.z=sx*.45;a.rotation.x=-.3}
     }else if(spk==='sapo'){
+      part(GEO.sphere,bodyM,.72,.38,.62,0,.42,-.02,g);
+      part(GEO.sphere,lightM,.48,.16,.42,0,.28,.12,g);
+      part(GEO.sphere,bodyM,.58,.38,.42,0,.68,.48,g);
       for(const sx of [-1,1]){
-        part(GEO.sphere,eyeM,.13,.12,.09,sx*.17,headY+.18,headZ+.28,g);
-        part(GEO.sphere,pupilM,.06,.062,.04,sx*.17,headY+.18,headZ+.34,g);
+        part(GEO.sphere,eyeM,.16,.18,.10,sx*.30,.82,.50,g);
+        part(GEO.sphere,pupilM,.075,.085,.045,sx*.30,.83,.57,g);
+        part(GEO.sphere,glintM,.018,.018,.012,sx*.28,.87,.61,g);
+        const upper=part(GEO.cyl,darkM,.06,.42,.06,sx*.58,.28,.28,g);upper.rotation.z=sx*.70;upper.rotation.x=.18;
+        const foot=part(GEO.sphere,bodyM,.28,.07,.18,sx*.78,.10,.48,g);foot.rotation.z=sx*.18;
+        for(let i=-1;i<=1;i++)part(GEO.cyl,darkM,.018,.20,.018,sx*.78+i*.09,.06,.62,g).rotation.z=sx*.35;
       }
-      part(GEO.box,blackM,.34,.02,.02,0,headY-.1,headZ+.34,g);
+      part(GEO.box,blackM,.38,.018,.018,0,.58,.82,g);
+      for(let i=0;i<9;i++){const a=i*TAU/9;part(GEO.sphere,darkM,.035,.018,.035,Math.cos(a)*.38,.33,Math.sin(a)*.24,g)}
     }else if(spk==='capivara'){
       part(GEO.box,lightM,.3,.17,.22,0,headY-.05,headZ+.36,g);
       part(GEO.box,blackM,.06,.04,.03,0,headY-.02,headZ+.48,g);
@@ -766,29 +845,61 @@ function initView(canvas){
       const sn=part(GEO.cone,lightM,.09,.34,.09,0,headY-.03,headZ+.4,g);sn.rotation.x=Math.PI/2;
       for(const sx of [-1,1])part(GEO.dode,MAT.stone,.07,.05,.07,sx*.24,.2,.5,g);
     }else if(spk==='coruja'){
+      part(GEO.sphere,bodyM,.50,.68,.42,0,.72,-.10,g);
+      part(GEO.sphere,lightM,.50,.48,.38,0,.92,.28,g);
       for(const sx of [-1,1]){
-        part(GEO.disc,lightM,.22,.22,.22,sx*.15,headY+.05,headZ+.29,g);
-        part(GEO.sphere,new THREE.MeshLambertMaterial({color:0xe8a13a}),.055,.06,.1,0,headY-.03,headZ+.4,g);
-        const tuft=part(GEO.cone,darkM,.06,.24,.045,sx*.25,headY+.34,headZ+.02,g);tuft.rotation.z=sx*.35;
-        const wing=part(GEO.sphere,darkM,.3,.16,.52,sx*.45,.56,-.12,g);wing.rotation.z=sx*.22;
+        part(GEO.sphere,eyeM,.19,.19,.12,sx*.23,1.02,.50,g);
+        part(GEO.sphere,pupilM,.09,.09,.055,sx*.23,1.02,.59,g);
+        const tuft=part(GEO.cone,darkM,.07,.30,.07,sx*.30,1.32,.18,g);tuft.rotation.z=sx*.35;
+        const wing=part(GEO.sphere,darkM,.34,.58,.15,sx*.44,.72,-.10,g);wing.rotation.z=sx*.20;
+        for(let i=0;i<5;i++)part(GEO.cone,lightM,.025,.18,.04,sx*.50+i*.015,.30-i*.05,.18,g).rotation.z=sx*.9;
       }
+      part(GEO.cone,new THREE.MeshLambertMaterial({color:0xe8a13a}),.11,.20,.08,0,.82,.70,g).rotation.x=Math.PI/2;
     }else if(spk==='cotia'){
       for(let i=0;i<3;i++)part(GEO.box,darkM,.1,.02,.82,(-.19+i*.19),.81,-.02,g);
       part(GEO.sphere,lightM,.13,.2,.13,0,.4,-bl*.6,g);
       part(GEO.cyl,darkM,.045,.5,.045,0,.35,-bl*.86,g).rotation.x=-1.3;
       for(const sx of [-1,1])part(GEO.cyl,darkM,.055,.28,.055,sx*.36,.16,-.34,g);
     }else if(spk==='calango'){
-      for(let i=0;i<6;i++){const a=Math.PI*(.2+i*.12);part(GEO.cone,darkM,.028,.12,.028,0,.86-i*.045,Math.sin(i*.9)*.16,g).rotation.z=.3}
-      part(GEO.sphere,lightM,.3,.14,.34,0,.42,.3,g);
-      for(const sx of [-1,1])part(GEO.sphere,blackM,.045,.045,.03,sx*.16,headY+.06,headZ+.32,g);
+      part(GEO.sphere,bodyM,.56,.25,.86,0,.38,-.08,g);
+      part(GEO.sphere,lightM,.38,.12,.52,0,.25,.12,g);
+      part(GEO.sphere,bodyM,.28,.20,.38,0,.48,.74,g);
+      for(const sx of [-1,1]){
+        part(GEO.sphere,eyeM,.055,.055,.035,sx*.20,.61,.96,g);
+        part(GEO.sphere,pupilM,.027,.027,.018,sx*.20,.61,1.00,g);
+        for(let i=0;i<2;i++){
+          const leg=part(GEO.cyl,darkM,.025,.42,.025,sx*(.42+i*.06),.19,.18+i*.42,g);leg.rotation.z=sx*.58;leg.rotation.x=.08;
+          part(GEO.sphere,darkM,.045,.018,.07,sx*.62,.06,.18+i*.42,g);
+        }
+      }
+      for(let i=0;i<6;i++)part(GEO.cone,darkM,.018,.32-.02*i,.018,0,.30,-.42-i*.20,g).rotation.x=Math.PI/2;
     }else if(spk==='cascavel'){
-      for(let i=0;i<5;i++)part(GEO.dode,darkM,.14,.09,.18,0,.74,Math.sin(i*1.2)*.12-.18-i*.1,g);
-      for(const sx of [-1,1])part(GEO.sphere,blackM,.04,.04,.025,sx*.16,headY+.06,headZ+.34,g);
-      part(GEO.box,blackM,.03,.012,.16,0,headY-.1,headZ+.42,g);
+      for(let i=0;i<9;i++){
+        const a=i*.72;
+        const seg=part(GEO.sphere,i<7?bodyM:darkM,.22-i*.006,.17,.30-i*.012,Math.sin(a)*.18,.30+i*.018,-.35-i*.12,g);
+        seg.scale.z=1.08;
+      }
+      part(GEO.dode,bodyM,.34,.20,.40,0,.48,.78,g);
+      part(GEO.sphere,lightM,.22,.10,.24,0,.34,.96,g);
+      for(const sx of [-1,1])part(GEO.sphere,blackM,.045,.045,.025,sx*.17,.58,.98,g);
+      part(GEO.cone,blackM,.022,.16,.022,0,.48,1.18,g).rotation.x=Math.PI/2;
+      for(let i=0;i<4;i++)part(GEO.torus,darkM,.16-i*.018,.025,.025,0,.27+i*.02,-.34-i*.12,g).rotation.x=Math.PI/2;
     }else if(spk==='escorpiao'){
-      for(const sx of [-1,1]){const claw=part(GEO.cone,darkM,.08,.24,.05,sx*.26,.48,headZ+.3,g);claw.rotation.x=Math.PI/2;claw.rotation.z=sx*.25;part(GEO.sphere,blackM,.1,.07,.08,sx*.28,.5,headZ+.42,g)}
-      for(let i=0;i<4;i++){const a=-.5+i*.55;part(GEO.sphere,darkM,.09,.08,.1,Math.cos(a)*-.1,.78+Math.sin(a)*.4,-.3,g)}
-      const sting=part(GEO.cone,new THREE.MeshLambertMaterial({color:0xc8a03a}),.035,.14,.035,0,1.06,-.62,g);sting.rotation.x=-.6;
+      part(GEO.sphere,bodyM,.48,.24,.58,0,.42,-.02,g);
+      part(GEO.sphere,darkM,.34,.18,.30,0,.48,.48,g);
+      for(const sx of [-1,1]){
+        const arm=part(GEO.cyl,darkM,.045,.38,.045,sx*.42,.48,.42,g);arm.rotation.z=sx*.72;arm.rotation.x=-.18;
+        part(GEO.sphere,blackM,.12,.09,.10,sx*.62,.64,.60,g);
+        part(GEO.box,darkM,.16,.07,.08,sx*.75,.68,.64,g).rotation.z=sx*.25;
+      }
+      for(const sx of [-1,1])for(let i=0;i<4;i++){
+        const leg=part(GEO.cyl,blackM,.018,.42,.018,sx*(.38+i*.09),.22,-.18+i*.24,g);leg.rotation.z=sx*(.55+i*.08);leg.rotation.x=.12;
+      }
+      for(let i=0;i<6;i++){
+        const segment=part(GEO.sphere,darkM,.10+i*.006,.09+i*.004,.12+i*.008,0,.38+i*.11,-.42-i*.18,g);
+        segment.rotation.x=-.08;
+      }
+      const sting=part(GEO.cone,new THREE.MeshLambertMaterial({color:0xc8a03a}),.065,.25,.065,0,.92,-1.48,g);sting.rotation.x=-.95;
     }else if(spk==='feneco'){
       for(const sx of [-1,1]){const e=part(GEO.cone,darkM,.12,.4,.05,sx*.26,headY+.36,headZ-.02,g);e.rotation.z=sx*.2;e.rotation.x=-.15;const inn=part(GEO.cone,pinkM,.07,.3,.02,sx*.26,headY+.35,headZ+.02,g);inn.rotation.z=sx*.2;inn.rotation.x=-.15}
       part(GEO.sphere,lightM,.2,.12,.14,0,headY-.08,headZ+.3,g);
@@ -802,12 +913,32 @@ function initView(canvas){
       for(let i=0;i<9;i++)part(GEO.sphere,lightM,.046,.018,.046,Math.sin(i*2.4)*.3,.68,Math.cos(i*3.1)*.4-.1,g);
       part(GEO.box,lightM,.22,.14,.2,0,headY-.06,headZ+.36,g);
     }else if(spk==='tamandua'){
-      const sn=part(GEO.cone,lightM,.06,.62,.06,0,headY-.04,headZ+.55,g);sn.rotation.x=Math.PI/2;
-      part(GEO.box,darkM,.16,.05,.5,0,.86,-.2,g);
+      part(GEO.sphere,bodyM,.74,.58,.82,0,.52,-.02,g);
+      part(GEO.box,darkM,.82,.30,.72,0,.82,-.08,g).rotation.z=-.12;
+      part(GEO.cone,lightM,.09,.76,.09,0,.54,.78,g).rotation.x=Math.PI/2;
+      part(GEO.sphere,lightM,.12,.08,.10,0,.56,1.20,g);
+      part(GEO.sphere,blackM,.032,.032,.020,-.13,.76,.65,g);
+      part(GEO.sphere,blackM,.032,.032,.020,.13,.76,.65,g);
+      part(GEO.cone,darkM,.08,.46,.08,0,.58,-.82,g).rotation.x=Math.PI/2;
+      for(const sx of [-1,1])for(const z of [-.42,.38]){
+        const leg=part(GEO.cyl,darkM,.075,.28,.075,sx*.48,.18,z,g);leg.rotation.z=sx*.12;
+        part(GEO.cone,blackM,.032,.18,.032,sx*.58,.06,z+.08,g).rotation.z=sx*.75;
+      }
     }else if(spk==='garca'){
-      for(const [fx,fz] of [[-.26,.24],[.26,.24],[-.26,-.2],[.26,-.2]])part(GEO.cyl,blackM,.017,.55,.017,fx,.27,fz,g);
-      const bk=part(GEO.cone,new THREE.MeshLambertMaterial({color:0xd8b048}),.045,.55,.045,0,headY-.02,headZ+.5,g);bk.rotation.x=Math.PI/2;
-      part(GEO.sphere,lightM,.26,.3,.3,0,.55,0,g);
+      part(GEO.sphere,lightM,.46,.58,.42,0,.86,-.02,g);
+      for(const sx of [-1,1]){
+        const wing=part(GEO.sphere,lightM,.30,.56,.16,sx*.42,.84,-.04,g);wing.rotation.z=sx*.22;
+        for(let i=0;i<4;i++)part(GEO.cone,bodyM,.035,.30,.035,sx*(.25+i*.10),.30-i*.04,-.14,g).rotation.z=sx*.80;
+      }
+      for(const sx of [-1,1]){
+        const leg=part(GEO.cyl,darkM,.022,1.05,.022,sx*.18,.20,.10,g);
+        leg.rotation.z=sx*.05;
+        part(GEO.box,darkM,.11,.025,.20,sx*.18,-.34,.26,g);
+      }
+      const neck=part(GEO.cyl,lightM,.09,.92,.09,0,1.30,.42,g);neck.rotation.x=-.55;
+      part(GEO.sphere,lightM,.16,.15,.16,0,1.58,.74,g);
+      const beak=part(GEO.cone,new THREE.MeshLambertMaterial({color:0xd8b048}),.055,.58,.055,0,1.58,1.02,g);beak.rotation.x=Math.PI/2;
+      part(GEO.sphere,bodyM,.30,.16,.22,0,.72,-.38,g);
     }else if(spk==='jaguatirica'){
       for(let i=0;i<8;i++)part(GEO.sphere,blackM,.05,.018,.05,Math.sin(i*2.1)*.34,.78,Math.cos(i*1.7)*.4-.1,g);
       for(let i=0;i<4;i++)part(GEO.sphere,blackM,.034,.02,.034,Math.sin(i*2.5+1)*.2,headY+.12,headZ+.2,g);
@@ -830,9 +961,19 @@ function initView(canvas){
     if(spk==='cigarra_bola')for(const sx of [-1,1])part(GEO.box,blackM,.02,.02,.4,sx*.12,1.0,-.05,g);
     // patas
     if(insect){
-      for(const sx of [-1,1])for(const z of [-.22,0,.22]){const l=part(GEO.cyl,blackM,.022,.22,.022,sx*.3,.1,z,g);l.rotation.z=sx*.5}
+      for(const sx of [-1,1])for(let i=0;i<3;i++){
+        const z=-.30+i*.30;
+        const leg=part(GEO.cyl,blackM,.018,.42,.018,sx*(.38+i*.03),.15,z,g);
+        leg.rotation.z=sx*(.58+i*.12);leg.rotation.x=(i-1)*.12;
+        const foot=part(GEO.sphere,blackM,.025,.018,.028,sx*(.58+i*.06),.02,z,g);
+      }
     }else{
-      for(const [fx,fz] of [[-.4,.3],[.4,.3],[-.4,-.3],[.4,-.3]])part(GEO.cyl,darkM,.09,.17,.09,fx,.12,fz,g);
+      for(const [fx,fz] of [[-.4,.3],[.4,.3],[-.4,-.3],[.4,-.3]]){
+        const legH=bird?.32:.17;
+        const leg=part(GEO.cyl,darkM,bird?.055:.09,legH,.09,fx,bird?.16:.12,fz,g);
+        leg.rotation.z=bird?(fx<0?-.08:.08):0;
+        if(bird)part(GEO.box,lightM,.09,.035,.15,fx,.035,fz+.03,g);
+      }
       if(sz>=.8)for(const [fx,fz] of [[-.4,.3],[.4,.3],[-.4,-.3],[.4,-.3]])for(const sx of [-1,0,1])part(GEO.sphere,lightM,.021,.018,.04,fx+sx*.055,.045,fz+.1,g);
     }
     // cauda
@@ -1612,10 +1753,15 @@ function initView(canvas){
     // cheia do pantanal
     if(W.flood>0){
       for(const w of waterG.children){
-        if(!w.userData.marsh)continue;
-        w.position.y=WATER_Y-.23+Math.min(1.1,W.flood*.75);
-        const k=1+W.flood*.22;
+        if(!w.userData.marsh&&!w.userData.marshEdge)continue;
+        w.position.y=(WATER_Y-.23)+(w.userData.marshEdge?.01:Math.min(1.1,W.flood*.75));
+        const k=1+W.flood*(w.userData.marshEdge?.42:.22);
         w.scale.set(k,k,1);
+      }
+    }else{
+      for(const w of waterG.children){
+        if(w.userData.marsh){w.position.y=WATER_Y-.23;w.scale.set(1,1,1)}
+        if(w.userData.marshEdge){w.position.y=WATER_Y-.24;w.scale.set(1,1,1)}
       }
     }
     // lobos
@@ -1652,9 +1798,18 @@ function initView(canvas){
     camera.position.z+=(pz-camera.position.z)*Math.min(1,dtReal*5);
     camera.lookAt(cam.look);
     // água brilha
+    const time=performance.now();
     waterG.children.forEach(m=>{
-      if(m.material&&m.material.shininess!==undefined)m.material.opacity=.82+.08*Math.sin(performance.now()*.001);
-      if(m.userData.fall)m.material.opacity=.45+.16*Math.sin(performance.now()*.005);
+      if(m.material&&m.material.shininess!==undefined)m.material.opacity=.84+.07*Math.sin(time*.001+m.position.x*.03);
+      if(m.geometry&&m.geometry.attributes&&m.geometry.attributes.position&&m.userData.waterBase){
+        const pos=m.geometry.attributes.position;
+        for(let i=1;i<pos.count;i++){
+          const x=pos.getX(i),z=pos.getZ(i);
+          pos.setY(i,(Math.sin(time*.0018+x*.08+m.position.z*.02)+Math.sin(time*.0013-z*.06))*Math.min(.018,W.flood*.025));
+        }
+        pos.needsUpdate=true;
+      }
+      if(m.userData.fall)m.material.opacity=.45+.16*Math.sin(time*.005);
     });
   }
 

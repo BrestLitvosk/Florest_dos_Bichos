@@ -28,14 +28,8 @@
     <div class="filebtns">
       <button id="btnFollow" title="Câmera segue o bicho selecionado (F)">seguir</button>
       <button id="btnCodex" title="Quadros, escritas, tribos, fé e estudos">cultura</button>
-      <button id="btnCritters" title="Quem está com o quê, relações e chegadas de bichos">bichos</button>
-      <button id="btnWolves" title="Lobos, ataques e defesas">lobos</button>
-      <button id="btnMusic" title="Tocar as músicas compostas pelas tribos">música</button>
-      <button id="btnHud" title="Fechar e abrir os painéis">painéis</button>
-      <button id="btnExport" title="Baixar o save como arquivo">salvar .json</button>
-      <button id="btnImport" title="Carregar um save exportado">importar</button>
-      <button id="btnNew" title="Começar uma floresta nova (apaga o save)">novo mundo</button>
-      <button id="btnShare" title="Como abrir o jogo para os amigos na mesma rede">compartilhar</button>
+      <button id="btnHud" title="Abrir painel rápido">mais</button>
+      <button id="btnShare" title="Compartilhar o jogo com amigos">compartilhar</button>
     </div>
   </header>
 
@@ -45,17 +39,17 @@
     <label><input type="checkbox" data-panel="detail" checked> detalhe do bicho</label>
     <label><input type="checkbox" data-panel="ticker" checked> eventos</label>
     <div class="hsep"></div>
-    <button data-tab="boards">quadros e escritas</button>
-    <button data-tab="tribes">tribos</button>
-    <button data-tab="faith">religião</button>
+    <button data-tab="boards">cultura</button>
+    <button data-tab="tribes">tribos e fé</button>
     <button data-tab="studies">pesquisas e ferramentas</button>
-    <div class="hsep"></div>
-    <button data-tab="langs">línguas</button>
-    <button data-tab="ruins">ruínas</button>
     <button data-tab="minds">mentes e capacidades</button>
     <button data-tab="music">músicas</button>
     <button data-tab="wolves">lobos e batalhas</button>
     <button data-tab="critters">bichos e equipamentos</button>
+    <div class="hsep"></div>
+    <button id="btnExport">salvar .json</button>
+    <button id="btnImport">importar</button>
+    <button id="btnNew">novo mundo</button>
   </div>
 
   <aside id="roster">
@@ -187,12 +181,17 @@
         <button data-tab="tribes">tribos</button>
         <button data-tab="faith">religião</button>
         <button data-tab="studies">estudos</button>
-        <button data-tab="langs">línguas</button>
-        <button data-tab="ruins">ruínas</button>
-        <button data-tab="minds">mentes</button>
-        <button data-tab="music">músicas</button>
-        <button data-tab="wolves">lobos</button>
-        <button data-tab="critters">bichos</button>
+        <details class="codexMore">
+          <summary>mais</summary>
+          <div class="codexMoreMenu">
+            <button data-tab="langs">línguas</button>
+            <button data-tab="ruins">ruínas</button>
+            <button data-tab="minds">mentes</button>
+            <button data-tab="music">músicas</button>
+            <button data-tab="wolves">lobos</button>
+            <button data-tab="critters">bichos</button>
+          </div>
+        </details>
       </nav>
       <button id="codexClose" title="Fechar">×</button>
     </div>
@@ -298,10 +297,10 @@
   </div>
 </div>
 
-<script src="js/three.min.js?v=20261122b"></script>
-<script src="js/sim.js?v=20261122b"></script>
-<script src="js/view.js?v=20261122b"></script>
-<script src="js/ui.js?v=20261122b"></script>
-<script src="js/game.js?v=20261122b"></script>
+<script src="js/three.min.js?v=20261122e"></script>
+<script src="js/sim.js?v=20261122e"></script>
+<script src="js/view.js?v=20261122e"></script>
+<script src="js/ui.js?v=20261122e"></script>
+<script src="js/game.js?v=20261122e"></script>
 </body>
 </html>

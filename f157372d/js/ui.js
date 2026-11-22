@@ -205,7 +205,11 @@ function initUI(){
     else if(tab==='wolves')renderWolves();
     else if(tab==='critters')renderCritters();
   }
-  codex.querySelectorAll('#codexTabs button').forEach(b=>b.addEventListener('click',()=>setTab(b.dataset.tab)));
+  codex.querySelectorAll('#codexTabs button').forEach(b=>b.addEventListener('click',()=>{
+    setTab(b.dataset.tab);
+    const more=codex.querySelector('.codexMore');
+    if(more)more.open=false;
+  }));
   codex.querySelectorAll('.boardPick button').forEach(b=>b.addEventListener('click',()=>{
     activeBoard=b.dataset.board;
     codex.querySelectorAll('.boardPick button').forEach(x=>x.classList.toggle('on',x===b));
