@@ -736,7 +736,7 @@ function initView(canvas){
     const bw=stout?1.26:aquatic?1.16:compact?.98:1.04;
     const bh=bird?.72:stout?1.04:compact?1.03:.88;
     const bl=bird?1.08:long?1.28:compact?.94:.98;
-    const specializedAnatomy=spk==='sapo'||spk==='calango'||spk==='cascavel'||spk==='escorpiao'||spk==='joaninha'||spk==='besouro_rinoceronte'||spk==='besouro_tartaruga'||spk==='besouro_fungo'||spk==='cigarra_bola'||spk==='rola_bosta'||spk==='serra_pau'||spk==='garca'||spk==='coruja'||spk==='tamandua';
+    const specializedAnatomy=spk==='sapo'||spk==='calango'||spk==='cascavel'||spk==='escorpiao'||spk==='joaninha'||spk==='besouro_rinoceronte'||spk==='besouro_tartaruga'||spk==='besouro_fungo'||spk==='cigarra_bola'||spk==='rola_bosta'||spk==='serra_pau'||spk==='garca'||spk==='coruja'||spk==='tamandua'||spk==='castor'||spk==='guaxinim'||spk==='toupeira'||spk==='marmota'||spk==='vombate'||spk==='porco_espinho'||spk==='porco_india'||spk==='esquilo'||spk==='nutria'||spk==='cuica'||spk==='capivara'||spk==='pug'||spk==='prea'||spk==='lontra'||spk==='tatu'||spk==='cotia'||spk==='feneco'||spk==='camelo'||spk==='paca'||spk==='jaguatirica';
     // corpo bolota só para espécies que ainda usam anatomia geral
     if(!specializedAnatomy){
       part(GEO.sphere,bodyM,bw*.64,bh*.63,bl*.68,0,.5,0,g);
@@ -771,6 +771,54 @@ function initView(canvas){
         const e=part(GEO.sphere,darkM,ew,eh,.05,sx*(spk==='pug'?.3:.25),headY+.24,headZ-.01,g);
         e.rotation.z=sx*.25;
         part(GEO.sphere,pinkM,ew*.5,eh*.58,.02,sx*(spk==='pug'?.3:.25),headY+.24,headZ+.035,g);
+      }
+    }
+    // Silhuetas próprias dos mamíferos.
+    if(spk==='castor'||spk==='nutria'||spk==='lontra'||spk==='guaxinim'||spk==='cuica'||spk==='porco_india'||spk==='marmota'||spk==='prea'||spk==='vombate'||spk==='cotia'||spk==='paca'||spk==='capivara'||spk==='esquilo'||spk==='pug'||spk==='feneco'||spk==='camelo'||spk==='jaguatirica'||spk==='toupeira'||spk==='porco_espinho'||spk==='tatu'){
+      const cat=spk==='jaguatirica'||spk==='pug'||spk==='feneco';
+      const longBody=spk==='lontra'||spk==='nutria'||spk==='cuica'||spk==='toupeira';
+      const rodent=spk==='porco_india'||spk==='marmota'||spk==='prea'||spk==='paca'||spk==='capivara'||spk==='cotia'||spk==='porco_espinho'||spk==='castor';
+      const bodyScale=spk==='capivara'?[.82,.58,.70]:spk==='camelo'?[.82,.64,.92]:cat?[.70,.50,.82]:rodent?[.68,.50,.72]:longBody?[.60,.38,.90]:[.66,.48,.76];
+      part(GEO.sphere,bodyM,bodyScale[0],bodyScale[1],bodyScale[2],0,.52,-.05,g);
+      part(GEO.sphere,lightM,bodyScale[0]*.62,bodyScale[1]*.42,bodyScale[2]*.66,0,.38,.20,g);
+
+      const headZ=spk==='capivara'?.72:.68;
+      const headY=spk==='camelo'?1.05:.78;
+      part(GEO.sphere,bodyM,spk==='camelo'?.24:cat?.34:.30,spk==='camelo'?.22:cat?.30:.27,spk==='capivara'?.32:.29,0,headY,headZ,g);
+
+      for(const sx of [-1,1]){
+        eyepush(part(GEO.sphere,eyeM,.075,.075,.045,sx*.18,headY+.09,headZ+.24,g));
+        eyepush(part(GEO.sphere,pupilM,.034,.038,.024,sx*.18,headY+.09,headZ+.28,g));
+        eyepush(part(GEO.sphere,glintM,.012,.012,.008,sx*.16,headY+.115,headZ+.302,g));
+        if(spk==='feneco'){
+          const ear=part(GEO.cone,darkM,.14,.42,.06,sx*.25,headY+.32,headZ-.08,g);ear.rotation.z=sx*.18;
+          part(GEO.cone,pinkM,.08,.30,.025,sx*.25,headY+.31,headZ-.03,g).rotation.z=sx*.18;
+        }else if(spk==='capivara'||spk==='marmota'||spk==='paca'||spk==='porco_india'||spk==='prea'||spk==='cotia'){
+          const ear=part(GEO.sphere,darkM,.075,.09,.045,sx*.22,headY+.19,headZ-.02,g);ear.rotation.z=sx*.18;
+        }else if(spk==='jaguatirica'||spk==='pug'||spk==='guaxinim'||spk==='cuica'||spk==='esquilo'){
+          const ear=part(GEO.sphere,darkM,.09,.11,.055,sx*.24,headY+.20,headZ-.02,g);ear.rotation.z=sx*.20;
+        }
+      }
+
+      if(spk==='pug'||spk==='capivara'||spk==='jaguatirica'||spk==='feneco'||spk==='paca'){
+        part(GEO.sphere,blackM,.08,.06,.06,0,headY-.04,headZ+.31,g);
+      }else{
+        part(GEO.sphere,pinkM,.055,.04,.06,0,headY-.05,headZ+.30,g);
+      }
+
+      if(spk==='capivara'||spk==='porco_india'||spk==='marmota'||spk==='prea'||spk==='paca'||spk==='cotia'){
+        part(GEO.box,lightM,.22,.12,.16,0,headY-.06,headZ+.27,g);
+      }
+      if(spk==='toupeira'||spk==='vombate'){
+        part(GEO.sphere,pinkM,.10,.07,.08,0,.68,.96,g);
+        for(const sx of [-1,1])for(let i=0;i<3;i++)part(GEO.cyl,blackM,.008,.17,.008,sx*.18,.66-i*.025,.98,g).rotation.z=sx*(.7+i*.12);
+      }
+
+      if(spk==='camelo'){
+        part(GEO.cyl,bodyM,.10,.58,.10,0,1.04,.52,g).rotation.x=-.15;
+        part(GEO.sphere,bodyM,.22,.30,.24,0,1.20,.84,g);
+        part(GEO.sphere,bodyM,.24,.18,.24,-.18,.98,.05,g);
+        part(GEO.sphere,bodyM,.24,.18,.24,.18,.98,.05,g);
       }
     }
     // pormenores por espécie
@@ -839,8 +887,10 @@ function initView(canvas){
       for(const sx of [-1,1])for(let i=0;i<3;i++){const w=part(GEO.cyl,blackM,.006,.18,.006,sx*.2,headY-.02-i*.02,headZ+.33,g);w.rotation.z=sx*(.9+i*.15)}
       if(spk==='cuica'){const sn=part(GEO.cone,lightM,.07,.18,.07,0,headY-.05,headZ+.42,g);sn.rotation.x=Math.PI/2}
     }else if(spk==='guaxinim'){
-      part(GEO.sphere,blackM,.15,.09,.06,-.16,headY+.08,headZ+.3,g);
-      part(GEO.sphere,blackM,.15,.09,.06,.16,headY+.08,headZ+.3,g);
+      part(GEO.sphere,blackM,.22,.14,.10,-.20,.86,.86,g);
+      part(GEO.sphere,blackM,.22,.14,.10,.20,.86,.86,g);
+      part(GEO.sphere,lightM,.22,.12,.12,0,.68,.96,g);
+      part(GEO.sphere,blackM,.055,.05,.04,0,.68,1.10,g);
     }else if(spk==='toupeira'){
       part(GEO.cyl,pinkM,.055,.15,.055,0,headY-.04,headZ+.32,g).rotation.x=1.2;
       for(const sx of [-1,1])part(GEO.box,pinkM,.14,.05,.19,sx*.24,.12,headZ*.5,g);
@@ -915,8 +965,14 @@ function initView(canvas){
       part(GEO.cyl,bodyM,.1,.5,.1,0,.86,headZ+.04,g);
       for(const sx of [-1,1])part(GEO.sphere,blackM,.035,.03,.02,sx*.17,headY+.1,headZ+.32,g);
     }else if(spk==='paca'){
-      for(let i=0;i<9;i++)part(GEO.sphere,lightM,.046,.018,.046,Math.sin(i*2.4)*.3,.68,Math.cos(i*3.1)*.4-.1,g);
-      part(GEO.box,lightM,.22,.14,.2,0,headY-.06,headZ+.36,g);
+      part(GEO.sphere,bodyM,.58,.48,.66,0,.50,-.04,g);
+      part(GEO.sphere,bodyM,.34,.28,.32,0,.72,.58,g);
+      for(let i=0;i<10;i++){
+        const a=i*2.399;
+        part(GEO.sphere,lightM,.055,.018,.055,Math.sin(a)*.32,.78,Math.cos(a*.8)*.35-.02,g);
+      }
+      part(GEO.sphere,lightM,.22,.12,.18,0,.65,.86,g);
+      part(GEO.sphere,blackM,.06,.05,.05,0,.65,1.02,g);
     }else if(spk==='tamandua'){
       part(GEO.sphere,bodyM,.74,.58,.82,0,.52,-.02,g);
       part(GEO.box,darkM,.82,.30,.72,0,.82,-.08,g).rotation.z=-.12;
@@ -945,23 +1001,67 @@ function initView(canvas){
       const beak=part(GEO.cone,new THREE.MeshLambertMaterial({color:0xd8b048}),.055,.58,.055,0,1.58,1.02,g);beak.rotation.x=Math.PI/2;
       part(GEO.sphere,bodyM,.30,.16,.22,0,.72,-.38,g);
     }else if(spk==='jaguatirica'){
-      for(let i=0;i<8;i++)part(GEO.sphere,blackM,.05,.018,.05,Math.sin(i*2.1)*.34,.78,Math.cos(i*1.7)*.4-.1,g);
-      for(let i=0;i<4;i++)part(GEO.sphere,blackM,.034,.02,.034,Math.sin(i*2.5+1)*.2,headY+.12,headZ+.2,g);
+      part(GEO.sphere,bodyM,.72,.48,.82,0,.52,-.06,g);
+      part(GEO.sphere,bodyM,.38,.34,.38,0,.72,.72,g);
+      for(let i=0;i<12;i++){
+        const a=i*2.399;
+        part(GEO.sphere,blackM,.055,.018,.055,Math.sin(a)*.48,.88,Math.cos(a*.7)*.38-.10,g);
+      }
+      for(let i=0;i<5;i++)part(GEO.sphere,blackM,.045,.018,.045,Math.sin(i*2.1)*.24,.82,.58+i*.10,g);
+      for(const sx of [-1,1]){
+        part(GEO.sphere,eyeM,.065,.065,.035,sx*.18,.86,.96,g);
+        part(GEO.sphere,pupilM,.027,.032,.018,sx*.18,.86,1.00,g);
+        part(GEO.sphere,darkM,.10,.12,.05,sx*.25,.98,.70,g);
+      }
     }
     // detalhes extras por espécie
-    if(spk==='castor'){for(const sx of [-1,1])part(GEO.box,eyeM,.035,.055,.02,sx*.038,headY-.115,headZ+.4,g)}
-    if(spk==='guaxinim')for(let i=0;i<3;i++)part(GEO.sphere,lightM,.1,.07,.1,0,.44-i*.09,-bl*.5-i*.07,g);
+    if(spk==='castor'){
+      part(GEO.sphere,bodyM,.68,.48,.66,0,.52,-.05,g);
+      part(GEO.sphere,bodyM,.34,.30,.32,0,.70,.62,g);
+      for(const sx of [-1,1]){
+        part(GEO.sphere,eyeM,.060,.060,.035,sx*.15,.82,.86,g);
+        part(GEO.sphere,pupilM,.028,.030,.018,sx*.15,.82,.90,g);
+        part(GEO.box,eyeM,.050,.065,.022,sx*.038,.61,.96,g);
+        part(GEO.sphere,darkM,.060,.055,.035,sx*.19,.90,.66,g);
+      }
+      part(GEO.sphere,blackM,.065,.052,.05,0,.72,1.02,g);
+    }
+    if(spk==='guaxinim'){
+      for(let i=0;i<5;i++){
+        const ring=part(GEO.torus,darkM,.13-i*.006,.055,.04,0,.42,-.62-i*.16,g);ring.rotation.x=Math.PI/2;
+      }
+    }
     if(spk==='esquilo'){
+      part(GEO.sphere,bodyM,.50,.38,.58,0,.48,-.04,g);
+      part(GEO.sphere,bodyM,.26,.24,.26,0,.73,.58,g);
       part(GEO.sphere,lightM,.09,.12,.09,0,.92,-bl*.6,g);
       for(const sx of [-1,1]){const t=part(GEO.cone,darkM,.03,.15,.03,sx*.24,headY+.4,headZ-.02,g);t.rotation.z=sx*.22}
     }
     if(spk==='capivara')for(let i=0;i<5;i++)part(GEO.sphere,darkM,.062,.022,.062,Math.sin(i*2.1)*.34,.72,-.28+i*.14,g);
-    if(spk==='lontra'||spk==='nutria')part(GEO.sphere,lightM,.2,.22,.08,0,headY-.24,headZ+.16,g);
+    if(spk==='lontra'||spk==='nutria'){
+      part(GEO.sphere,bodyM,spk==='lontra'?.58:.62,.30,.86,0,.38,-.08,g);
+      part(GEO.sphere,bodyM,.32,.25,.34,0,.66,.66,g);
+      part(GEO.sphere,lightM,.22,.15,.18,0,.58,.88,g);
+      part(GEO.sphere,blackM,.06,.05,.04,0,.61,1.00,g);
+      for(const sx of [-1,1])part(GEO.sphere,eyeM,.055,.055,.035,sx*.16,.78,.88,g);
+    }
     if(spk==='sapo')for(let i=0;i<6;i++){const an=i*1.9;part(GEO.sphere,darkM,.05,.032,.05,Math.cos(an)*.34,.84,Math.sin(an)*.34-.08,g)}
-    if(spk==='porco_india')for(let i=0;i<6;i++)part(GEO.sphere,darkM,.05,.018,.05,Math.sin(i*2.3)*.36,.74,Math.cos(i*2.3)*.34-.04,g);
+    if(spk==='porco_india'){
+      part(GEO.sphere,bodyM,.55,.36,.62,0,.40,-.05,g);
+      part(GEO.sphere,bodyM,.30,.24,.28,0,.64,.58,g);
+      for(let i=0;i<8;i++){
+        const a=i*TAU/8;
+        part(GEO.sphere,darkM,.035,.018,.035,Math.sin(a)*.30,.62,Math.cos(a)*.34-.02,g);
+      }
+    }
     if(spk==='toupeira')for(let i=0;i<6;i++){const an=i*TAU/6;const c=part(GEO.cone,pinkM,.018,.07,.018,Math.cos(an)*.06,headY-.04,headZ+.39,g);c.rotation.x=Math.PI/2;c.rotation.z=an}
     if(spk==='pug')for(const sx of [-1,1])part(GEO.sphere,darkM,.12,.1,.04,sx*.16,headY+.11,headZ+.27,g);
-    if(spk==='vombate')part(GEO.sphere,lightM,.3,.12,.2,0,.5,-bl*.5,g);
+    if(spk==='vombate'){
+      part(GEO.sphere,bodyM,.78,.58,.68,0,.48,-.08,g);
+      part(GEO.sphere,bodyM,.42,.34,.38,0,.70,.58,g);
+      part(GEO.sphere,lightM,.28,.12,.22,0,.48,-.42,g);
+      for(const sx of [-1,1])part(GEO.sphere,darkM,.065,.065,.04,sx*.20,.86,.78,g);
+    }
     if(spk==='besouro_rinoceronte'||spk==='besouro_tartaruga'||spk==='besouro_fungo')part(GEO.box,blackM,.02,.022,.5,0,1.0,-.02,g);
     if(spk==='cigarra_bola')for(const sx of [-1,1])part(GEO.box,blackM,.02,.02,.4,sx*.12,1.0,-.05,g);
     // patas
