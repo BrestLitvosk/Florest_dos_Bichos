@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <title>Floresta — bichos que aprendem</title>
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<link rel="stylesheet" href="css/style.css?v=20261122u">
+<link rel="stylesheet" href="css/style.css?v=20261125f">
 </head>
 <body>
 <canvas id="world"></canvas>
@@ -143,6 +143,10 @@
       <div id="tribeBox"></div>
     </div>
     <div class="box">
+      <h3>Amizades e inimizades</h3>
+      <div id="relationships"></div>
+    </div>
+    <div class="box">
       <h3>Idiomas da floresta</h3>
       <div id="langs"></div>
     </div>
@@ -170,6 +174,38 @@
       <button id="tutorialNext" class="primarybtn">próximo</button>
     </div>
   </div>
+</div>
+
+<div id="computerWindow" class="modal pcModal hide" role="dialog" aria-modal="true" aria-labelledby="computerTitle">
+  <section class="pcCard">
+    <header class="pcHead">
+      <div class="pcBrand"><span>FLORESTA OS</span><strong id="computerTitle">Computador dos bichos</strong></div>
+      <button id="computerClose" title="Fechar computador" aria-label="Fechar computador">×</button>
+    </header>
+    <div class="pcDesktop">
+      <nav id="computerApps" class="pcApps" aria-label="Aplicativos">
+        <button data-computer-app="search" class="on"><span>G</span>Google</button>
+        <button data-computer-app="audio"><span>♫</span>Áudios</button>
+        <button data-computer-app="gallery"><span>▧</span>Galeria</button>
+      </nav>
+      <main class="pcScreen">
+        <section class="pcPage" data-computer-page="search">
+          <div class="pcSearchHero"><b>Google Imagens</b><span>pesquisas dos bichos · resultados da Wikimedia Commons</span></div>
+          <div class="pcSearchBar"><span class="pcSearchIcon">⌕</span><span>imagens pesquisadas na floresta</span><button id="computerPasteImage" type="button" disabled>Colar na galeria</button></div>
+          <div id="computerSearches" class="pcResults"></div>
+        </section>
+        <section class="pcPage hide" data-computer-page="audio">
+          <div class="pcPageHead"><div><b>Áudios baixados</b><span>composições geradas pelos bichos</span></div><span id="computerAudioCount" class="pcCount">0</span></div>
+          <div id="computerAudios" class="pcAudioList"></div>
+        </section>
+        <section class="pcPage hide" data-computer-page="gallery">
+          <div class="pcPageHead"><div><b>Galeria</b><span>links das imagens copiadas, sem baixar arquivos</span></div><span id="computerImageCount" class="pcCount">0</span></div>
+          <div id="computerGallery" class="pcGallery"></div>
+        </section>
+      </main>
+    </div>
+    <footer class="pcFoot">Pesquisas pertencem ao mundo simulado; imagens da Commons exibem origem, autor e licença.</footer>
+  </section>
 </div>
 
 <div id="codex" class="modal hide">
@@ -260,13 +296,11 @@
   <div class="modalCard" style="max-width:620px">
     <div class="modalHead"><b>como a mente deles decide</b><button id="neuralClose" style="margin-left:auto;padding:0 8px!important;font-size:18px!important">×</button></div>
     <div class="modalBody" style="font-size:13px;line-height:1.6">
-      <p>Cada bicho é uma <b>rede pequena de votos</b>: ele lista o que poderia fazer agora (beber, comer, dormir, conversar, mexer em algo, construir…) e dá uma nota para cada ideia. A nota soma quatro coisas:</p>
-      <p><b>1. necessidade</b> — fome, sede, sono, frio, saúde e companhia pesam cada uma de um jeito;<br>
-      <b>2. memória</b> — o que já deu certo ou errado no passado (o “o que aprendeu”);<br>
-      <b>3. curiosidade e personalidade</b> — o traço dele (corajoso, medroso, curioso…) e a vontade de experimentar;<br>
-      <b>4. novidade</b> — coisas nunca tentadas ganham um empurrãozinho.</p>
+      <p>Cada bicho é uma <b>rede de votos</b>: compara até doze ideias possíveis. A nota combina necessidades, memória, curiosidade, personalidade e valores próprios — sociabilidade, invenção, risco, comércio e vontade de novidade. Cada um também tem sonhos, manias e opiniões diferentes.</p>
+      <p>A memória recente reduz a chance de repetir a mesma escolha sem necessidade. Ainda assim, as necessidades urgentes (como fome e sede) continuam tendo prioridade; experimentar não deve impedir a sobrevivência.</p>
       <p>As notas viram <b>pesos</b> e ele sorteia uma ideia (não é sempre a maior: por isso às vezes erra e aprende). Depois ele cumpre passos: ir até o lugar, ficar, usar as mãos. Ao terminar, o resultado volta para a memória — se a necessidade melhorou, aquilo fica mais forte da próxima vez.</p>
-      <p>Ao lado dos pensamentos aparece o desenho dessa rede: as <b>bolinhas</b> são as ideias e o brilho é o peso. Clique num bicho e abra “Mente neural” para ver os votos, as capacidades e o que ele já sabe fazer.</p>
+      <p>A memória também forma um <b>grafo próprio</b>: liga a coisa encontrada à ação e ao resultado nas necessidades — por exemplo, “erva-marinha → provar → fome melhorou”. Quando dorme, o bicho reforça algumas dessas ligações recentes; não é uma troca de lembranças entre membros da tribo.</p>
+      <p>No painel “Mente neural”, o grafo mostra coisas, ações e resultados; ligações mais fortes ficam mais visíveis. As ilhas de coral variam de recifes pequenos a mega-ilhas, com árvores de coral, plantas e computadores. Os bichos marinhos podem pesquisar neles; o histórico individual aparece na aba “estudos”.</p>
       <p class="dimtxt">Nada disso é aleatório de verdade: é o mesmo laço necessidade → memória → escolha → consequência girando o tempo todo. Lobos, tribos e músicas usam o mesmo tipo de conta.</p>
     </div>
   </div>
@@ -322,10 +356,10 @@
   </div>
 </div>
 
-<script src="js/three.min.js?v=20261122u"></script>
-<script src="js/sim.js?v=20261122u"></script>
-<script src="js/view.js?v=20261122u"></script>
-<script src="js/ui.js?v=20261122u"></script>
-<script src="js/game.js?v=20261122u"></script>
+<script src="js/three.min.js?v=20261123b"></script>
+<script src="js/sim.js?v=20261125g"></script>
+<script src="js/view.js?v=20261125g"></script>
+<script src="js/ui.js?v=20261125g"></script>
+<script src="js/game.js?v=20261125g"></script>
 </body>
 </html>

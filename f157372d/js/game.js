@@ -17,6 +17,7 @@ function cleanThingData(t){
   return d;
 }
 function serializeWorld(){
+  const computer=W.computer||{audios:[],images:[],imageSearches:[],clipboard:null,nextId:1};
   const data={
     v:SAVE_VERSION, ts:Date.now(), seed:W.seed, t:W.t, dayLen:W.dayLen, rain:W.rain, nextRain:W.nextRain,
     nid:W.nid, regT:W.regT, percT:W.percT, stats:W.stats,
@@ -24,12 +25,18 @@ function serializeWorld(){
     events:W.events.slice(-80),
     mural:W.mural||{marks:[]},quadro:W.quadro||{marks:[]},
     tribes:W.tribes||[],tribeNid:W.tribeNid||1,wolves:W.wolves||[],wolfNid:W.wolfNid||1,
+    diplomacy:W.diplomacy||[],diplomacyT:W.diplomacyT,langEvents:W.langEvents||[],
     crisis:W.crisis||null,snow:W.snow||0,flood:W.flood||0,yearLen:W.yearLen||16,
     campaign:W.campaign||null,
     weather:W.weather||{kind:'limpo',until:0,next:80},
     cfg:CFG,gn:GN,biomesV:2,biomeMapV:W.biomeMapV||1,rosterV:2,faunaV:3,wolfEvery:W.wolfEvery||0,wolfFirst:W.wolfFirst||0,
     arriveEvery:W.arriveEvery||0,animalCap:W.animalCap||80,arriveNext:W.arriveNext||0,arrivals:W.arrivals||0,
-    songs:(W.songs||[]).slice(-24),songT:W.songT||0,aquaticHabitatV:W.aquaticHabitatV||0,
+    songs:(W.songs||[]).slice(-24),songT:W.songT||0,computer:{
+      ...computer,
+      images:(Array.isArray(computer.images)?computer.images:[]).filter(image=>image.status!=='loading'),
+      imageSearches:(Array.isArray(computer.imageSearches)?computer.imageSearches:[]).filter(search=>search.status!=='loading')
+    },aquaticHabitatV:W.aquaticHabitatV||0,reefV:2,
+    reefIslands:REEF_ISLANDS.map(island=>({...island})),
     // células compactas: só os números que mudam, sem objetos repetidos
     cellsV:2,
     cellSt:W.cells.map(c=>c.st),
@@ -48,9 +55,10 @@ function serializeWorld(){
         curio:a.curio,hands:a.hands.slice(),handT:a.handT,mem:a.mem,lex:a.lex,
         words:[...a.words],kinds:[...a.kinds],phon:a.phon,seen,others,
         tried:a.tried,recipes:a.recipes,inventions:a.inventions,lessons:a.lessons,fear:a.fear,
-        known:a.known,knowledge:a.knowledge,research:a.research,
+        known:a.known,knowledge:a.knowledge,research:a.research,researchT:a.researchT||0,researchLog:(a.researchLog||[]).slice(-100),wikipedia:(a.wikipedia||[]).slice(-16),recentActions:(a.recentActions||[]).slice(-12),memoryGraph:a.memoryGraph||null,
         age:a.age,exp:a.exp,log:a.log.slice(-60),wish:a.wish,ideas:a.ideas,
         project:a.project,stats:a.stats,vc:a.vc,lastDig:ld,faint:a.faint,
+        fightAnimUntil:a.fightAnimUntil||0,fightOtherId:a.fightOtherId||null,fightWeapon:a.fightWeapon||null,
         songs:(a.songs||[]).slice(-6),
         tribeId:a.tribeId||null,taken:a.taken||null,ruinT:a.ruinT||0,
         pers:a.pers||null,opinion:a.opinion||{},thoughtT:a.thoughtT||0,dreamT:a.dreamT||0,
@@ -67,11 +75,13 @@ function serializeWorld(){
 function deserializeWorld(data){
   if(!data||data.v!==SAVE_VERSION)throw new Error('save incompatível');
   R=mulberry32(((Date.now()>>>0)^0x9e3779b9)>>>0);
+  const computer=data.computer||{};
   W={
     seed:data.seed,t:data.t,dayLen:data.dayLen||240,rain:data.rain||0,nextRain:data.nextRain||120,
     things:[],byId:{},animals:[],cells:[],burning:[],events:data.events||[],nid:data.nid||1,regT:data.regT||0,percT:0,
     mural:data.mural||{marks:[]},quadro:data.quadro||{marks:[]},
     tribes:data.tribes||[],tribeNid:data.tribeNid||1,wolves:data.wolves||[],wolfNid:data.wolfNid||1,
+    diplomacy:Array.isArray(data.diplomacy)?data.diplomacy:[],diplomacyT:Number.isFinite(data.diplomacyT)?data.diplomacyT:(data.dayLen||240),langEvents:Array.isArray(data.langEvents)?data.langEvents.slice(-60):[],
     crisis:data.crisis||null,snow:data.snow||0,flood:data.flood||0,yearLen:data.yearLen||16,tribeT:12,
     weather:data.weather||{kind:'limpo',until:0,next:rnd(50,110)},
     wolfEvery:data.wolfEvery!=null?data.wolfEvery:(CFG?CFG.wolfDays:10),
@@ -79,7 +89,14 @@ function deserializeWorld(data){
     arriveEvery:data.arriveEvery!=null?data.arriveEvery:(CFG?CFG.arriveEvery:0),
     animalCap:data.animalCap||(CFG?CFG.animalCap:80),
     arriveNext:data.arriveNext||1e9,arrivals:data.arrivals||0,
-    songs:data.songs||[],songT:data.songT||0,aquaticHabitatV:data.aquaticHabitatV||0,
+    songs:data.songs||[],songT:data.songT||0,computer:{
+      ...computer,
+      audios:Array.isArray(computer.audios)?computer.audios:[],
+      images:Array.isArray(computer.images)?computer.images:[],
+      imageSearches:Array.isArray(computer.imageSearches)?computer.imageSearches:[],
+      clipboard:computer.clipboard||null,
+      nextId:Number.isFinite(computer.nextId)?computer.nextId:1
+    },aquaticHabitatV:data.aquaticHabitatV||0,
     campaign:data.campaign||{completed:[],era:0,nextStory:(data.t||0)+(data.dayLen||240)*2,stories:[]},
     stats:data.stats||{fires:0,words:0,inventions:0,trees:0,mixes:0},
     names:new Set(data.names||[]),words:new Set(data.words||[]),inventions:data.inventions||[],
@@ -88,11 +105,18 @@ function deserializeWorld(data){
   if(W.biomeMapV)makeBiomeRegions(W.seed,CFG&&CFG.biomes);
   else BIOME_REGIONS=null;
   if(W.biomeMapV>=2)makeOceanZone(W.seed,CFG&&CFG.biomes);
-  else OCEAN_ZONE=null;
+  else{OCEAN_ZONE=null;REEF_ISLANDS=[]}
+  if(OCEAN_ZONE&&data.reefV>=2&&Array.isArray(data.reefIslands)){
+    REEF_ISLANDS=data.reefIslands.filter(island=>island&&Number.isFinite(island.x)&&Number.isFinite(island.z)&&Number.isFinite(island.r)&&island.r>0).slice(0,6);
+  }else if(!OCEAN_ZONE||W.biomeMapV<2){
+    REEF_ISLANDS=[];
+  }
   const savedGoals=new Set(Array.isArray(W.campaign.completed)?W.campaign.completed:[]);
+  if(savedGoals.has('shelter'))savedGoals.add('stone-tools');
+  if(savedGoals.has('inventions'))savedGoals.add('bronze');
   W.campaign.completed=[];
   for(const goal of CAMPAIGN_GOALS){if(!savedGoals.has(goal.id))break;W.campaign.completed.push(goal.id)}
-  W.campaign.era=clamp(W.campaign.era|0,0,CAMPAIGN_ERAS.length-1);
+  W.campaign.era=clamp(Math.floor(W.campaign.completed.length/2),0,CAMPAIGN_ERAS.length-1);
   W.campaign.stories=Array.isArray(W.campaign.stories)?W.campaign.stories.slice(-16):[];
   if(!Number.isFinite(W.campaign.nextStory))W.campaign.nextStory=W.t+W.dayLen*2;
   buildPonds();
@@ -105,10 +129,10 @@ function deserializeWorld(data){
       const i=iy*GN+ix;
       const cx=-HALF+ix*CELL+CELL/2,cz=-HALF+iy*CELL+CELL/2;
       const h0=hgt(cx,cz);
-      W.cells.push({ix,iy,cx,cz,st:data.cellSt[i],f:data.cellF?data.cellF[i]:1,bt:0,digs:data.cellDigs?data.cellDigs[i]:0,rg:data.cellRg?data.cellRg[i]:0,sh:data.cellSh?data.cellSh[i]:.5,h:h0,bm:biomeAt(cx,cz,h0),tb:0,by:null});
+      W.cells.push({ix,iy,cx,cz,st:reefIslandAt(cx,cz)?5:data.cellSt[i],f:data.cellF?data.cellF[i]:1,bt:0,digs:data.cellDigs?data.cellDigs[i]:0,rg:data.cellRg?data.cellRg[i]:0,sh:data.cellSh?data.cellSh[i]:.5,h:h0,bm:biomeAt(cx,cz,h0),tb:0,by:null});
     }
   }else if(gridOk){
-    W.cells=data.cells.map(c=>({ix:c.ix,iy:c.iy,cx:c.cx,cz:c.cz,st:c.st,f:c.f,bt:c.bt,digs:c.digs,rg:c.rg,sh:c.sh,h:c.h,bm:c.bm!=null?c.bm:biomeAt(c.cx,c.cz,c.h),tb:0,by:null}));
+    W.cells=data.cells.map(c=>({ix:c.ix,iy:c.iy,cx:c.cx,cz:c.cz,st:reefIslandAt(c.cx,c.cz)?5:c.st,f:c.f,bt:c.bt,digs:c.digs,rg:c.rg,sh:c.sh,h:c.h,bm:c.bm!=null?c.bm:biomeAt(c.cx,c.cz,c.h),tb:0,by:null}));
   }else{
     // save de mapa antigo: reconstrói o terreno no tamanho novo (e enche a área nova)
     migrated=true;
@@ -116,7 +140,7 @@ function deserializeWorld(data){
       const cx=-HALF+ix*CELL+CELL/2,cz=-HALF+iy*CELL+CELL/2;
       const h0=hgt(cx,cz);
       const pnd=isOcean(cx,cz)||inPond(cx,cz,1.12)||inRiver(cx,cz,1.15);
-      W.cells.push({ix,iy,cx,cz,st:pnd?4:0,f:pnd?0:rnd(.55,1),bt:0,digs:0,rg:0,sh:R(),h:h0,bm:biomeAt(cx,cz,h0),tb:0,by:null});
+      W.cells.push({ix,iy,cx,cz,st:reefIslandAt(cx,cz)?5:pnd?4:0,f:pnd?0:rnd(.55,1),bt:0,digs:0,rg:0,sh:R(),h:h0,bm:biomeAt(cx,cz,h0),tb:0,by:null});
     }
   }
   W.oceanCells=W.cells.filter(c=>c.bm===10&&c.st===4);
@@ -140,10 +164,12 @@ function deserializeWorld(data){
       hands:sa.hands||[],handT:sa.handT||0,mem:sa.mem||{},seen:{},kinds:new Set(sa.kinds||[]),others:{},
       tried:sa.tried||{},recipes:sa.recipes||{},inventions:sa.inventions||[],
       lessons:sa.lessons||{burned:false},fear:Object.assign({fire:0,wolf:0},sa.fear||{}),
-      known:sa.known||{},knowledge:sa.knowledge||{},research:sa.research||0,
+      known:sa.known||{},knowledge:sa.knowledge||{},research:sa.research||0,researchT:sa.researchT||0,researchLog:Array.isArray(sa.researchLog)?sa.researchLog.slice(-100):[],
+      memoryGraph:null,wikipedia:Array.isArray(sa.wikipedia)?sa.wikipedia.slice(-16):[],recentActions:Array.isArray(sa.recentActions)?sa.recentActions.slice(-12):[],
       tribeId:sa.tribeId||null,taken:sa.taken||null,mind:null,ruinT:sa.ruinT||0,
       pers:sa.pers||null,opinion:sa.opinion||{},thoughtT:sa.thoughtT||0,dreamT:sa.dreamT||0,lastThinkT:0,
       plan:null,cur:null,state:sa.taken?'taken':sa.faint>0?'faint':'idle',idle:rnd(.3,1.2),age:sa.age||0,exp:sa.exp||0,
+      fighting:false,fightAnimUntil:sa.fightAnimUntil||0,fightOtherId:sa.fightOtherId||null,fightWolfId:null,fightWeapon:sa.fightWeapon||null,
       log:sa.log||[],bubble:null,wish:sa.wish||{text:'…',tag:''},ideas:sa.ideas||[],project:sa.project||null,
       stats:Object.assign({eaten:0,drank:0,slept:0,dug:0,burned:0,built:0,talks:0,fished:0},sa.stats||{}),
       songs:sa.songs||[],gateT:0,
@@ -156,7 +182,8 @@ function deserializeWorld(data){
       if(c)a.lastDig={x:sa.lastDig.x,z:sa.lastDig.z,t:sa.lastDig.t,cell:c};
     }
     W.animals.push(a);
-    if(!a.pers||!a.pers.dream)initSelf(a);
+    a.memoryGraph=restoreMemoryGraph(a,sa.memoryGraph);
+    if(!a.pers||!a.pers.dream||!a.pers.values)initSelf(a);
   }
   for(const sa of data.animals||[]){
     const a=W.animals.find(x=>x.id===sa.id);if(!a)continue;
@@ -193,10 +220,13 @@ function deserializeWorld(data){
     tr.center=tr.center||{x:0,z:0};tr.members=tr.members.filter(id=>W.animals.some(a=>a.id===id));
     tr.faith=tr.faith||{element:'floresta',name:'ka',gloss:'a mata que dá e toma',piety:.2,prayers:[]};
     tr.culture=tr.culture||{element:'floresta',style:0,label:'da floresta'};
+    tr.culture.social=Number.isFinite(tr.culture.social)?tr.culture.social:.5;
+    tr.stores=Object.assign({food:2,wood:1,stone:1},tr.stores||{});
     if(tr.aquatic==null){
       const members=tr.members.map(id=>W.animals.find(a=>a.id===id)).filter(Boolean);
       tr.aquatic=members.length>1&&members.every(a=>a.sp.marine)&&isOcean(tr.center.x,tr.center.z);
     }
+    tr.sites=tr.sites||findResourceSites(tr);
     // tribos antigas ganham portão e números
     const stock=W.things.find(t=>!t.gone&&t.id===tr.stockadeId);
     if(!tr.aquatic&&!W.things.some(t=>!t.gone&&t.kind==='portao'&&t.data&&t.data.tribe===tr.id)){

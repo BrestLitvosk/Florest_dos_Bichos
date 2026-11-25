@@ -11,7 +11,7 @@ function initUI(){
   const ideasEl=$('#ideas'),memEl=$('#mem'),inventEl=$('#invent');
   const feelEl=$('#feel'),wantsEl=$('#wants');
   const langsEl=$('#langs'),webEl=$('#web'),webInfoEl=$('#webInfo');
-  const toolsEl=$('#tools'),tribeBoxEl=$('#tribeBox'),actionsEl=$('#actions');
+  const toolsEl=$('#tools'),tribeBoxEl=$('#tribeBox'),relationshipsEl=$('#relationships'),actionsEl=$('#actions');
   const gearBoxEl=$('#gearBox'),musicBoxEl=$('#musicBox'),mindBoxEl=$('#mindBox'),ruinsBoxEl=$('#ruinsBox');
   const musicBar=$('#musicBar'),musicNowEl=$('#musicNow');
   const persEl=$('#pers'),persDreamEl=$('#persDream');
@@ -19,6 +19,7 @@ function initUI(){
   const dayLabel=$('#dayLabel'),clockLabel=$('#clockLabel'),weatherLabel=$('#weatherLabel'),crisisLabel=$('#crisisLabel');
   const saveInfo=$('#saveInfo');
   const codex=$('#codex'),galleryCanvas=$('#galleryCanvas'),boardMeta=$('#boardMeta');
+  const computerWindow=$('#computerWindow');
   const journeyList=$('#journeyList');
   const suggestionForm=$('#suggestionForm'),suggestionStatus=$('#suggestionStatus');
 
@@ -29,6 +30,7 @@ function initUI(){
   let webTopic=null;
   let activeBoard='mural';
   let codexOpen=false;
+  let computerOpen=false,computerApp='search';
   const uiPanels=JSON.parse(localStorage.getItem('florestaPanels.v1')||'{}');
   const COLORS=['#eaf2e8','#f2cf75','#eb9384','#a8d8b0','#a9cbee','#d9b8f5'];
 
@@ -52,6 +54,7 @@ function initUI(){
     return st;
   }
   function esc(s){return String(s)}
+  function htmlEscape(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
   function who(id){const a=W&&W.animals.find(x=>x.id===id);return a?(a.name||a.sp.label.toLowerCase()):'alguém'}
 
   /* ---------- painéis ---------- */
@@ -92,6 +95,19 @@ function initUI(){
     openCodex('boards');
   }
   function closeCodex(){codex.classList.add('hide');codexOpen=false}
+  function openComputer(){
+    computerWindow.classList.remove('hide');
+    computerOpen=true;
+    setComputerApp(computerApp);
+  }
+  function closeComputer(){computerWindow.classList.add('hide');computerOpen=false}
+  function setComputerApp(app){
+    if(!['search','audio','gallery'].includes(app))return;
+    computerApp=app;
+    computerWindow.querySelectorAll('[data-computer-app]').forEach(button=>button.classList.toggle('on',button.dataset.computerApp===app));
+    computerWindow.querySelectorAll('[data-computer-page]').forEach(page=>page.classList.toggle('hide',page.dataset.computerPage!==app));
+    renderComputer(app);
+  }
   function setTab(tab){
     codex.querySelectorAll('#codexTabs button').forEach(b=>b.classList.toggle('on',b.dataset.tab===tab));
     codex.querySelectorAll('.tabPane').forEach(p=>p.classList.toggle('hide',p.dataset.pane!==tab));
@@ -131,8 +147,19 @@ function initUI(){
     if(!rows.length){list.innerHTML='<span class="empty">ninguém escreveu nem desenhou nada ainda.</span>';return}
     list.innerHTML=rows.slice(0,40).map(({kind,m})=>{
       const col=COLORS[(m.col||0)%COLORS.length];
-      const body=m.type==='word'?`<div class="wbody"><span class="wword" style="color:${col}">${m.txt}</span></div>`:'<div class="wbody wtag">um desenho de riscos.</div>';
-      return `<div class="wcard"><div class="whead"><span>${m.type==='word'?'palavra':'desenho'} · ${kind}</span><span class="wtag">${who(m.by)} · dia ${Math.floor((m.t||0)/W.dayLen)+1}</span></div>${body}</div>`;
+      let body;
+      if(m.type==='word')body=`<div class="wbody"><span class="wword" style="color:${col}">${htmlEscape(m.txt||'')}</span></div>`;
+      else if(m.meaning){
+        const paths=(m.strokes||[]).map(points=>{
+          const valid=(points||[]).filter(p=>Array.isArray(p)&&Number.isFinite(p[0])&&Number.isFinite(p[1]));
+          if(!valid.length)return '';
+          const coords=valid.map(p=>`${Math.max(0,Math.min(1,p[0]))*100},${Math.max(0,Math.min(1,p[1]))*100}`).join(' ');
+          return `<polyline points="${coords}" fill="none" stroke="${col}" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>`;
+        }).join('');
+        const label=htmlEscape(m.meaning);
+        body=`<div class="wbody"><svg class="wglyph" viewBox="0 0 100 100" role="img" aria-label="${label}">${paths}</svg><div class="wtranslation"><b>Tradução:</b> ${label}</div></div>`;
+      }else body='<div class="wbody wtag">desenho livre, sem tradução registrada.</div>';
+      return `<div class="wcard"><div class="whead"><span>${m.type==='word'?'palavra':'símbolos'} · ${kind}</span><span class="wtag">${who(m.by)} · dia ${Math.floor((m.t||0)/W.dayLen)+1}</span></div>${body}</div>`;
     }).join('');
   }
   function renderTribes(){
@@ -148,9 +175,24 @@ function initUI(){
       const nums=tr.numerals?`números: ${tr.numerals.map((w,i)=>`${i+1} ${w}`).join(' · ')}`:'ainda não contam';
       const settlement=tr.aquatic?`${reefs} corais · colônia submersa`:`${houses} casa(s) · cercado em ${Math.round(tr.center.x)}, ${Math.round(tr.center.z)}`;
       const gateInfo=tr.aquatic?'habitat: recife':`portão: ${gate?(gate.data.open>.5?'aberto':'trancado'):'—'}`;
+      const stores=tr.stores||{food:0,wood:0,stone:0};
+      const resources=`reservas: comida ${stores.food.toFixed(1)} · madeira ${stores.wood.toFixed(1)} · minerais ${stores.stone.toFixed(1)}`;
+      const sites=tr.sites||{};
+      const sitesLine=['food','wood','stone'].map((key,i)=>{
+        const site=sites[key];return site?`${['alimento','madeira','minerais'][i]} (${Math.round(site.x)}, ${Math.round(site.z)})`:null;
+      }).filter(Boolean).join(' · ');
+      const statusText={friendly:'amizade e comércio',enemy:'inimizade',neutral:'sem acordo'};
+      const diplomacy=(W.diplomacy||[]).filter(r=>r.a===tr.id||r.b===tr.id).map(r=>{
+        const other=W.tribes.find(x=>x.id===(r.a===tr.id?r.b:r.a));
+        return other?`${other.name}: ${statusText[r.status]||r.status}`:null;
+      }).filter(Boolean).join(' · ');
       return `<div class="wcard tribeCard"><div class="tname">${tr.name}</div>
         <div class="tline">cultura ${tr.culture.label||cult.label||'?'} · ${mem.length} membro(s) · ${settlement}</div>
         <div class="tline">${gateInfo} · ${nums}</div>
+        <div class="tline">${resources}</div>
+        ${sitesLine?`<div class="tline">pontos ricos: ${sitesLine}</div>`:''}
+        ${diplomacy?`<div class="tline">relações: ${diplomacy}</div>`:''}
+        ${tr.soundChanges?`<div class="tline">Lei de Grimm: ${tr.soundChanges} mudança(s) sonora(s)</div>`:''}
         ${tr.inscription?`<div class="tline">inscrição da ruína: “${tr.inscription}”</div>`:''}
         <div class="tline">falam: ${(tr.lang||[]).slice(0,6).join(' · ')||'—'}</div>
         <div class="tline">${names.join(' · ')}</div>
@@ -186,15 +228,150 @@ function initUI(){
       const ks=Object.keys(a.knowledge||{});
       const tools=TOOL_KEYS.filter(k=>a.recipes&&a.recipes[k]);
       const builds=BUILD_KEYS.filter(k=>a.recipes&&a.recipes[k]);
-      if(!ks.length&&!tools.length&&!builds.length)return '';
+      const history=Array.isArray(a.researchLog)?a.researchLog.slice().reverse():[];
+      const wiki=Array.isArray(a.wikipedia)?a.wikipedia.slice().reverse():[];
+      if(!ks.length&&!tools.length&&!builds.length&&!history.length&&!wiki.length)return '';
       return `<div class="studyRow"><div class="sname">${a.name||a.sp.label.toLowerCase()} <span class="dimtxt">(${a.sp.label})</span></div>
         <div class="stopics">${ks.map(k=>`<span class="chip kc" title="${esc((RESEARCH.find(r=>r[0]===k)||[])[1]||'')}">${k}</span>`).join('')||'<span class="empty">nada na internet</span>'}</div>
         ${tools.length?`<div class="stool">ferramentas: ${tools.map(k=>'<span class="toolchip hand">'+(K[k]?K[k].g:k)+'</span>').join(' ')}</div>`:''}
         ${builds.length?`<div class="stool">construções: ${builds.map(k=>'<span class="toolchip">'+(K[k]?K[k].g:k)+'</span>').join(' ')}</div>`:''}
+        ${history.length?`<div class="researchHistory"><b>histórico de pesquisas</b>${history.map(item=>{
+          const day=Math.floor((item.t||0)/(W.dayLen||240))+1;
+          const topic=String(item.topic||'assunto desconhecido').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+          const place=String(item.place||'outro lugar').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+          return `<div class="researchEntry"><span>dia ${day} · ${place}</span><b>${topic}</b></div>`;
+        }).join('')}</div>`:''}
+        ${wiki.length?`<div class="researchHistory"><b>resumos da Wikipédia</b>${wiki.map(item=>
+          `<div class="researchEntry"><span>${Math.floor((item.t||0)/(W.dayLen||240))+1} · ${htmlEscape(item.topic)}</span>${
+            item.error?`<b>${htmlEscape(item.error)}</b>`:`<b>${htmlEscape(item.title)}</b><span>${htmlEscape(item.extract)}</span><a href="${htmlEscape(item.url)}" target="_blank" rel="noopener noreferrer">fonte</a>`
+          }</div>`).join('')}</div>`:''}
       </div>`;
     }).filter(Boolean).join('');
     list.innerHTML=`<div class="wcard"><div class="whead">o que se pode descobrir na internet</div><div class="wbody" style="max-height:200px;overflow:auto">${catalog}</div></div>`+
       (rows||'<span class="empty">ninguém pesquisou nada ainda.</span>');
+  }
+  const COMPUTER_ART={
+    agua:{sky:'#173b50',ground:'#285d6e',accent:'#8fe3d2',detail:'#d2f3e8'},
+    ceu:{sky:'#26304f',ground:'#45416c',accent:'#f2cf75',detail:'#d9e3ff'},
+    planta:{sky:'#b6d4ad',ground:'#385d3c',accent:'#92be62',detail:'#e5d58c'},
+    fogo:{sky:'#4c3241',ground:'#593c37',accent:'#ffad58',detail:'#ffe1a0'},
+    amigo:{sky:'#86b8b0',ground:'#40664e',accent:'#f2cf75',detail:'#f5d6c3'},
+    comida:{sky:'#9bc3b2',ground:'#526e42',accent:'#ef9d59',detail:'#f4d57c'},
+    ferramenta:{sky:'#9bb2b4',ground:'#55645b',accent:'#e5c27b',detail:'#e7ece0'},
+    trilha:{sky:'#a7c7d7',ground:'#53674f',accent:'#f0cd83',detail:'#e0edd1'},
+    abstrato:{sky:'#554b75',ground:'#3e6480',accent:'#f2a4b7',detail:'#f2cf75'}
+  };
+  function computerWikimediaUrl(value,hosts){
+    try{
+      const url=new URL(value);
+      return url.protocol==='https:'&&hosts.includes(url.hostname)?url.href:'';
+    }catch(error){
+      return '';
+    }
+  }
+  function computerImageMarkup(item){
+    if(item.status==='loading')return '<div class="pcImageStatus">Buscando uma imagem na Wikimedia Commons…</div>';
+    if(item.status==='error')return `<div class="pcImageStatus pcImageError">${htmlEscape(item.error||'A imagem não pôde ser carregada.')}</div>`;
+    if(item.imageUrl){
+      const imageUrl=computerWikimediaUrl(item.imageUrl,['thumb.wikimedia.org','upload.wikimedia.org']);
+      const sourceUrl=computerWikimediaUrl(item.sourceUrl,['commons.wikimedia.org']);
+      if(imageUrl&&sourceUrl){
+        return `<a class="pcPhotoLink" href="${htmlEscape(sourceUrl)}" target="_blank" rel="noopener noreferrer"><img class="pcPhoto" data-computer-image="${Number(item.id)}" src="${htmlEscape(imageUrl)}" alt="${htmlEscape(item.title)}" loading="lazy"></a>`;
+      }
+      return '<div class="pcImageStatus pcImageError">A origem desta imagem não pôde ser validada.</div>';
+    }
+    return computerPicture(item);
+  }
+  function computerPicture(item){
+    const art=COMPUTER_ART[item.theme]||COMPUTER_ART.abstrato;
+    const shift=(item.seed||0)%24;
+    let motif;
+    if(item.theme==='agua')motif='<path d="M0 64 Q18 53 36 64 T72 64 T108 64 T144 64 T180 64 T216 64 T256 64 V112 H0Z" fill="'+art.accent+'"/><path d="M0 79 Q18 68 36 79 T72 79 T108 79 T144 79 T180 79 T216 79 T256 79" fill="none" stroke="'+art.detail+'" stroke-width="3"/>';
+    else if(item.theme==='ceu')motif='<circle cx="'+(56+shift)+'" cy="33" r="15" fill="'+art.accent+'"/><path d="M0 92 L62 48 L112 87 L165 42 L256 96 V112 H0Z" fill="'+art.detail+'"/>';
+    else if(item.theme==='planta')motif='<path d="M128 108V37 M128 68Q78 69 70 35Q111 34 128 68 M128 54Q150 20 191 27Q181 61 128 54" fill="none" stroke="'+art.accent+'" stroke-width="7" stroke-linecap="round"/><circle cx="128" cy="31" r="9" fill="'+art.detail+'"/>';
+    else if(item.theme==='fogo')motif='<path d="M128 103Q84 86 104 56Q116 43 114 26Q144 44 143 65Q162 52 159 38Q194 74 164 98Q147 109 128 103Z" fill="'+art.accent+'"/><path d="M128 94Q111 77 131 59Q150 78 143 94Z" fill="'+art.detail+'"/>';
+    else if(item.theme==='amigo')motif='<circle cx="96" cy="53" r="19" fill="'+art.accent+'"/><circle cx="160" cy="53" r="19" fill="'+art.detail+'"/><path d="M67 103Q69 74 96 74Q123 74 125 103 M131 103Q133 74 160 74Q187 74 189 103" fill="none" stroke="#f4eee0" stroke-width="8" stroke-linecap="round"/>';
+    else if(item.theme==='comida')motif='<path d="M128 96Q79 67 104 38Q126 17 151 38Q178 70 128 96Z" fill="'+art.accent+'"/><path d="M128 40Q130 24 147 20" fill="none" stroke="'+art.detail+'" stroke-width="6" stroke-linecap="round"/><circle cx="111" cy="59" r="3" fill="#fff"/>';
+    else if(item.theme==='ferramenta')motif='<path d="M88 89L156 30" stroke="'+art.detail+'" stroke-width="12" stroke-linecap="round"/><path d="M139 24L172 18L183 41L161 55Z" fill="'+art.accent+'"/>';
+    else motif='<path d="M0 100L58 52L91 79L151 31L256 98V112H0Z" fill="'+art.detail+'"/><circle cx="'+(52+shift)+'" cy="36" r="11" fill="'+art.accent+'"/>';
+    return `<svg class="pcArt" viewBox="0 0 256 112" role="img" aria-label="${htmlEscape(item.title)}"><rect width="256" height="112" fill="${art.sky}"/><path d="M0 90Q62 76 126 88T256 83V112H0Z" fill="${art.ground}"/>${motif}</svg>`;
+  }
+  function renderComputer(app){
+    if(!computerOpen||!W)return;
+    app=app||computerApp;
+    const library=W.computer||{audios:[],images:[],imageSearches:[],clipboard:null};
+    if(app==='search'){
+      const searches=W.animals.flatMap(a=>(a.researchLog||[]).map(item=>({animal:a,item})))
+        .sort((a,b)=>(b.item.t||0)-(a.item.t||0)).slice(0,60);
+      const list=$('#computerSearches');
+      const historyMarkup=searches.map(({animal:a,item})=>{
+        const topic=String(item.topic||'assunto desconhecido'),safeTopic=htmlEscape(topic);
+        const wiki=(a.wikipedia||[]).slice().reverse().find(result=>result.topic===topic);
+        const fact=RESEARCH.find(row=>row[0]===topic);
+        const summary=wiki?(wiki.error?`A Wikipédia não respondeu: ${wiki.error}`:wiki.extract):fact?fact[1]:'A busca foi registrada; o bicho ainda está pensando no que encontrou.';
+        const day=Math.floor((item.t||0)/(W.dayLen||240))+1;
+        const excerpt=summary.length>280?summary.slice(0,277)+'…':summary;
+        return `<article class="pcResult"><div class="pcResultTop"><span>Pesquisa de ${htmlEscape(a.name||a.sp.label)}</span><span>dia ${day}</span></div><b>${safeTopic}</b><p>${htmlEscape(excerpt)}</p></article>`;
+      }).join('');
+      const imageSearches=(library.imageSearches||[]).slice().reverse().slice(0,18);
+      const imageMarkup=imageSearches.map(search=>{
+        const results=Array.isArray(search.results)?search.results:[];
+        let content='';
+        if(search.status==='loading')content='<div class="pcImageStatus">O bicho está pesquisando imagens na Wikimedia Commons…</div>';
+        else if(search.status==='error')content=`<div class="pcImageStatus pcImageError">${htmlEscape(search.error||'A pesquisa de imagens falhou.')}</div>`;
+        else if(!results.length)content='<div class="pcImageStatus">Nenhuma imagem adequada foi encontrada.</div>';
+        else content=`<div class="pcImageResults">${results.map((result,index)=>{
+          const imageUrl=computerWikimediaUrl(result.imageUrl,['thumb.wikimedia.org','upload.wikimedia.org']);
+          const sourceUrl=computerWikimediaUrl(result.sourceUrl,['commons.wikimedia.org']);
+          const licenseUrl=computerWikimediaUrl(result.licenseUrl,['creativecommons.org','www.gnu.org','www.fsf.org']);
+          const already=(library.images||[]).some(image=>image.sourceUrl===result.sourceUrl);
+          const valid=!!imageUrl&&!!sourceUrl;
+          const image=imageUrl&&sourceUrl
+            ?`<a href="${htmlEscape(sourceUrl)}" target="_blank" rel="noopener noreferrer"><img class="pcImageThumb" src="${htmlEscape(imageUrl)}" alt="${htmlEscape(result.title)}" loading="lazy"></a>`
+            :'<div class="pcImageStatus pcImageError">A origem desta imagem não pôde ser validada.</div>';
+          const license=licenseUrl?`<a href="${htmlEscape(licenseUrl)}" target="_blank" rel="noopener noreferrer">${htmlEscape(result.license||'licença')}</a>`:htmlEscape(result.license||'licença não informada');
+          return `<article class="pcImageHit">${image}<b>${htmlEscape(result.title)}</b><span>Autor: ${htmlEscape(result.author||'não informado')} · ${license}</span><button data-computer-copy-image="${Number(search.id)}:${index}" ${already||!valid?'disabled':''}>${already?'na galeria':valid?'copiar':'indisponível'}</button></article>`;
+        }).join('')}</div>`;
+        return `<section class="pcImageSearch"><div class="pcImageSearchHead"><span>Google Imagens · ${htmlEscape(search.byName||'pesquisa dos bichos')}</span><b>${htmlEscape(search.topic||'imagens')}</b><small>dia ${Number(search.day)||0} · resultados da Wikimedia Commons</small></div>${content}</section>`;
+      }).join('');
+      list.innerHTML=(historyMarkup||(!imageMarkup?'<div class="pcEmpty">Os bichos ainda não pesquisaram. As buscas e imagens aparecerão aqui.</div>':''))+imageMarkup;
+      const pasteButton=$('#computerPasteImage');
+      if(pasteButton)pasteButton.disabled=!library.clipboard;
+      list.querySelectorAll('[data-computer-copy-image]').forEach(button=>button.addEventListener('click',()=>{
+        const [searchId,index]=button.dataset.computerCopyImage.split(':').map(Number);
+        const search=(library.imageSearches||[]).find(item=>item.id===searchId);
+        const result=search&&Array.isArray(search.results)?search.results[index]:null;
+        if(!result){toast('Esse resultado não está mais disponível.');return}
+        library.clipboard={...result,topic:search.topic,by:search.by,byName:search.byName,day:search.day,t:search.t};
+        toast('Imagem copiada. Clique em “Colar na galeria” para guardar o link.');
+        renderComputer('search');
+      }));
+    }else if(app==='audio'){
+      const audios=(library.audios||[]).slice().reverse(),list=$('#computerAudios');
+      $('#computerAudioCount').textContent=String(audios.length);
+      if(!audios.length){list.innerHTML='<div class="pcEmpty">A biblioteca está vazia. Os bichos podem encontrar e guardar áudios enquanto pesquisam.</div>';return}
+      list.innerHTML=audios.map(item=>`<article class="pcAudio"><span class="pcAudioIcon">♫</span><div class="pcAudioInfo"><b>${htmlEscape(item.title)}</b><span>${htmlEscape(item.topic)} · ${htmlEscape(item.byName)} · dia ${Number(item.day)||0}</span></div><button data-computer-audio="${Number(item.id)}">ouvir</button></article>`).join('');
+      list.querySelectorAll('[data-computer-audio]').forEach(button=>button.addEventListener('click',()=>{
+        const item=(library.audios||[]).find(audio=>audio.id===Number(button.dataset.computerAudio));
+        if(item)playComputerAudio(item);
+      }));
+    }else if(app==='gallery'){
+      const images=(library.images||[]).slice().reverse(),list=$('#computerGallery');
+      $('#computerImageCount').textContent=String(images.length);
+      if(!images.length){list.innerHTML='<div class="pcEmpty">A galeria está vazia. Quando pesquisarem, os bichos podem buscar imagens na Wikimedia Commons.</div>';return}
+      list.innerHTML=images.map(item=>{
+        const sourceUrl=computerWikimediaUrl(item.sourceUrl,['commons.wikimedia.org']);
+        const licenseUrl=computerWikimediaUrl(item.licenseUrl,['creativecommons.org','www.gnu.org','www.fsf.org']);
+        return `<article class="pcImage">${computerImageMarkup(item)}<b>${htmlEscape(item.title)}</b><div class="pcImageMeta"><span>${htmlEscape(item.topic)} · pesquisa de ${htmlEscape(item.byName)} · dia ${Number(item.day)||0}</span>${sourceUrl&&item.status==='ready'?`<span>Autor: ${htmlEscape(item.author||'Autor não informado')} · licença: ${licenseUrl?`<a href="${htmlEscape(licenseUrl)}" target="_blank" rel="noopener noreferrer">${htmlEscape(item.license||'detalhes')}</a>`:htmlEscape(item.license||'não informada')} · <a href="${htmlEscape(sourceUrl)}" target="_blank" rel="noopener noreferrer">ver origem</a></span>`:''}</div></article>`;
+      }).join('');
+      list.querySelectorAll('[data-computer-image]').forEach(img=>img.addEventListener('error',()=>{
+        const item=images.find(image=>image.id===Number(img.dataset.computerImage));
+        if(!item)return;
+        item.status='error';
+        item.error='A imagem não carregou da Wikimedia Commons. O bicho pode tentar pesquisar esse assunto novamente.';
+        renderComputer('gallery');
+      }));
+    }
   }
   function renderJourney(){
     if(!journeyList)return;
@@ -301,6 +478,26 @@ function initUI(){
   if(btnWolves)btnWolves.addEventListener('click',()=>openCodex('wolves'));
   const btnMusic=$('#btnMusic');
   if(btnMusic)btnMusic.addEventListener('click',()=>toggleMusic());
+  $('#computerClose').addEventListener('click',closeComputer);
+  computerWindow.addEventListener('click',e=>{if(e.target===computerWindow)closeComputer()});
+  computerWindow.querySelectorAll('[data-computer-app]').forEach(button=>button.addEventListener('click',()=>setComputerApp(button.dataset.computerApp)));
+  const pasteImageButton=$('#computerPasteImage');
+  if(pasteImageButton)pasteImageButton.addEventListener('click',()=>{
+    if(!W||!W.computer||!W.computer.clipboard){toast('Copie primeiro um resultado de imagem.');return}
+    const clipboard=W.computer.clipboard;
+    const existing=(W.computer.images||[]).find(image=>image.sourceUrl===clipboard.sourceUrl);
+    if(existing){
+      W.computer.clipboard=null;setComputerApp('gallery');toast('Essa imagem já está na galeria.');return;
+    }
+    try{
+      const copied=copyComputerImageToGallery(clipboard,clipboard);
+      if(!copied){toast('A galeria está cheia. Remova imagens antes de colar outra.');return}
+      W.computer.clipboard=null;setComputerApp('gallery');
+      toast('Imagem colada na galeria como link remoto; nenhum arquivo foi baixado.');
+    }catch(error){
+      toast(error&&error.message?error.message:'Não foi possível colar essa imagem.');
+    }
+  });
   const mindHelp=$('#mindHelp');
   const neuralModal=$('#neuralModal');
   if(mindHelp&&neuralModal){
@@ -318,6 +515,7 @@ function initUI(){
     if(e.key!=='Escape')return;
     hudMenu.classList.add('hide');
     if(codexOpen)closeCodex();
+    if(computerOpen)closeComputer();
     const sm=$('#shareModal');if(sm)sm.classList.add('hide');
   });
   const shareModal=$('#shareModal');
@@ -425,8 +623,11 @@ function initUI(){
       `<span class="mood ${P.routine==='noite'?'cold':'good'}">${P.routine==='noite'?'noturno':'diurno'}</span>`+
       (P.dreams?`<span class="mood good">${P.dreams} sonho(s) realizado(s)</span>`:'');
     const d=P.dream;
+    const values=P.values||{};
+    const valueLabels={curiosity:'curiosidade',sociability:'amizade',craft:'invenção',risk:'risco',novelty:'novidade',trade:'troca'};
+    const valuesText=Object.keys(valueLabels).map(key=>`${valueLabels[key]} ${Math.round((values[key]||0)*100)}`).join(' · ');
     persDreamEl.innerHTML=(d?`<div class="dreamq${d.done?' done':''}">${d.done?'já realizou':'sonho'}: ${d.label}</div>`:'')+
-      `<div class="dim">acha que ${P.belief}.</div>`;
+      `<div class="dim">acha que ${P.belief}.</div><div class="dim">valores: ${valuesText}</div>`;
   }
   const PROJ_NAME={montinho:'montinho',fogueira:'fogueira',toca:'toca',abrigo:'abrigo',represa:'represa',marco:'marco',cabana:'cabana',ponte:'ponte',torre:'torre',celeiro:'celeiro'};
   function feelingsOf(a){
@@ -529,19 +730,30 @@ function initUI(){
   function renderWeb(a){
     if(!a){webEl.innerHTML='';webInfoEl.innerHTML='';return}
     const ks=Object.keys(a.knowledge||{});
-    if(!ks.length){webEl.innerHTML='<span class="empty">ainda não pesquisou na internet.</span>';webInfoEl.innerHTML='';return}
+    const wiki=a.wikipedia||[];
+    if(!ks.length&&!wiki.length){webEl.innerHTML='<span class="empty">ainda não pesquisou na internet.</span>';webInfoEl.innerHTML='';return}
     webEl.innerHTML=ks.map(k=>`<span class="chip kc${k===webTopic?' on':''}" data-topic="${esc(k)}">${k}</span>`).join('');
+    if(!ks.length)webEl.innerHTML='<span class="empty">sem pesquisas registradas ainda.</span>';
+    if(!webTopic&&wiki.length)webTopic=wiki[wiki.length-1].topic;
+    const result=wiki.slice().reverse().find(item=>item.topic===webTopic);
     if(!webTopic||ks.indexOf(webTopic)<0){
-      webInfoEl.innerHTML='<span class="empty">clique num tema para ver o que ele entendeu.</span>';
+      if(result){
+        webInfoEl.innerHTML=result.error
+          ?`<b>${htmlEscape(result.topic)}</b> — ${htmlEscape(result.error)}`
+          :`<b>${htmlEscape(result.title)}</b> — ${htmlEscape(result.extract)} <a href="${htmlEscape(result.url)}" target="_blank" rel="noopener noreferrer">abrir na Wikipédia</a>`;
+      }else webInfoEl.innerHTML='<span class="empty">clique num tema para ver o que ele entendeu.</span>';
     }else{
       const r=RESEARCH.find(x=>x[0]===webTopic);
-      webInfoEl.innerHTML=`<b>${webTopic}</b> — ${r?r[1]:'ele guardou essa ideia do jeito dele.'}`;
+      webInfoEl.innerHTML=`<b>${htmlEscape(webTopic)}</b> — ${htmlEscape(r?r[1]:'ele guardou essa ideia do jeito dele.')}`+
+        (result?(result.error?`<div>Wikipédia: ${htmlEscape(result.error)}</div>`:`<div><b>Wikipédia:</b> ${htmlEscape(result.extract)} <a href="${htmlEscape(result.url)}" target="_blank" rel="noopener noreferrer">fonte</a></div>`):'');
     }
     webEl.querySelectorAll('.chip.kc').forEach(c=>c.addEventListener('click',()=>{
       webTopic=c.dataset.topic;
       webEl.querySelectorAll('.chip.kc').forEach(x=>x.classList.toggle('on',x===c));
       const r=RESEARCH.find(x=>x[0]===webTopic);
-      webInfoEl.innerHTML=`<b>${webTopic}</b> — ${r?r[1]:'ele guardou essa ideia do jeito dele.'}`;
+      const found=(a.wikipedia||[]).slice().reverse().find(item=>item.topic===webTopic);
+      webInfoEl.innerHTML=`<b>${htmlEscape(webTopic)}</b> — ${htmlEscape(r?r[1]:'ele guardou essa ideia do jeito dele.')}`+
+        (found?(found.error?`<div>Wikipédia: ${htmlEscape(found.error)}</div>`:`<div><b>Wikipédia:</b> ${htmlEscape(found.extract)} <a href="${htmlEscape(found.url)}" target="_blank" rel="noopener noreferrer">fonte</a></div>`):'');
     }));
   }
   function renderTools(a){
@@ -595,10 +807,33 @@ function initUI(){
     if(!tr){tribeBoxEl.innerHTML='<span class="empty">ainda não vive em tribo.</span>';return}
     const houses=W.things.filter(t=>!t.gone&&t.data&&t.data.tribe===tr.id&&t.data.house).length;
     const reefs=W.things.filter(t=>!t.gone&&t.kind==='coral'&&t.data&&t.data.tribe===tr.id).length;
+    const stores=tr.stores||{food:0,wood:0,stone:0};
+    const neighbors=(W.diplomacy||[]).filter(r=>r.a===tr.id||r.b===tr.id).map(r=>{
+      const other=W.tribes.find(x=>x.id===(r.a===tr.id?r.b:r.a));
+      const label=r.status==='friendly'?'amigos e parceiros de comércio':r.status==='enemy'?'inimigos':'ainda sem acordo';
+      return other?`${other.name}: ${label}`:null;
+    }).filter(Boolean);
     tribeBoxEl.innerHTML=`<div class="tname">${tr.name}</div>
       <div>cultura ${tr.culture.label||'?'} · ${tr.members.length} bichos · ${tr.aquatic?`${reefs} corais no recife`:houses+' casas'}</div>
       <div class="fait">fé em ${tr.faith.name} — ${tr.faith.gloss}</div>
-      <div class="dim">devoção ${(tr.faith.piety*100).toFixed(0)}% · falam ${(tr.lang||[]).slice(0,3).join(' · ')||'—'}</div>`;
+      <div class="dim">devoção ${(tr.faith.piety*100).toFixed(0)}% · falam ${(tr.lang||[]).slice(0,3).join(' · ')||'—'}</div>
+      <div class="dim">reservas: comida ${stores.food.toFixed(1)} · madeira ${stores.wood.toFixed(1)} · minerais ${stores.stone.toFixed(1)}</div>
+      ${neighbors.length?`<div class="dim">relações: ${neighbors.join(' · ')}</div>`:''}
+      ${tr.soundChanges?`<div class="dim">Lei de Grimm: ${tr.soundChanges} mudança(s) na língua</div>`:''}`;
+  }
+  function renderRelationships(a){
+    if(!relationshipsEl)return;
+    if(!a){relationshipsEl.innerHTML='';return}
+    const rows=Object.keys(a.opinion||{}).map(id=>({
+      animal:W.animals.find(other=>other.id===+id),
+      value:(a.opinion[id]||{}).v||0,
+    })).filter(row=>row.animal).sort((left,right)=>Math.abs(right.value)-Math.abs(left.value)).slice(0,8);
+    if(!rows.length){relationshipsEl.innerHTML='<span class="empty">ainda não conhece ninguém o bastante para formar uma opinião.</span>';return}
+    relationshipsEl.innerHTML=`<div class="relList">${rows.map(row=>{
+      const label=row.value>.45?'amigo':row.value<-.45?'inimigo':row.value>=0?'simpatia':'desconfiança';
+      return `<div class="relRow"><span class="rn">${row.animal.name||row.animal.sp.label.toLowerCase()}</span>
+        <span class="rv ${row.value>=0?'f':'r'}">${label} · ${Math.round(Math.abs(row.value)*100)}%</span></div>`;
+    }).join('')}</div>`;
   }
   function renderLangs(){
     if(!W){langsEl.innerHTML='';return}
@@ -634,14 +869,14 @@ function initUI(){
       wishEl.textContent='…';thoughtsEl.innerHTML='';lexEl.innerHTML='';handsEl.innerHTML='';
       persEl.innerHTML='';persDreamEl.innerHTML='';
       ideasEl.innerHTML='';memEl.innerHTML='';inventEl.innerHTML='';feelEl.innerHTML='';wantsEl.innerHTML='';webEl.innerHTML='';
-      webInfoEl.innerHTML='';toolsEl.innerHTML='';tribeBoxEl.innerHTML='';actionsEl.innerHTML='';
+      webInfoEl.innerHTML='';toolsEl.innerHTML='';tribeBoxEl.innerHTML='';relationshipsEl.innerHTML='';actionsEl.innerHTML='';
       if(gearBoxEl)gearBoxEl.innerHTML='';if(musicBoxEl)musicBoxEl.innerHTML='';if(mindBoxEl)mindBoxEl.innerHTML='';if(ruinsBoxEl)ruinsBoxEl.innerHTML='';
       return;
     }
     dName.innerHTML=(a.name?`<b>${a.name}</b>`:'sem nome')+`<small>${a.sp.label}</small>`;
     const ageMin=Math.floor(a.age/60);
     dSub.innerHTML=`<span>${statusOf(a)}</span><span>${ageMin<1?'recém-acordado':ageMin+' min de vida'}</span><span>${a.exp} experiências</span>`;
-    renderWish(a);renderSelf(a);renderMood(a);renderThoughts(a);renderLex(a);renderHands(a);renderIdeas(a);renderMem(a);renderInvent(a);renderWeb(a);renderLangs();renderTools(a);renderTribe(a);renderActions(a);
+    renderWish(a);renderSelf(a);renderMood(a);renderThoughts(a);renderLex(a);renderHands(a);renderIdeas(a);renderMem(a);renderInvent(a);renderWeb(a);renderLangs();renderTools(a);renderTribe(a);renderRelationships(a);renderActions(a);
     renderGear(a);renderMusic(a);renderMind(a);renderRuinsSel(a);
   }
   function select(id){
@@ -735,6 +970,24 @@ function initUI(){
     }
     return s;
   }
+  function playComputerAudio(item){
+    if(!ensureAudio()){toast('este navegador não deixa tocar áudio.');return}
+    if(!Array.isArray(item.notes)||!item.notes.length){toast('este arquivo não tem notas para tocar.');return}
+    musicOn=false;clearInterval(musicTimer);musicTimer=null;
+    const b=$('#btnMusic');if(b){b.classList.remove('on');b.textContent='música'}
+    stopNotes();
+    const t0=ac.currentTime+.08,step=.42;
+    item.notes.forEach((midi,i)=>{
+      const f=440*Math.pow(2,(midi-69)/12);
+      tone(f,t0+i*step,.38,.1,'triangle');
+      if(i%3===0)tone(f/2,t0+i*step,.75,.035,'sine');
+    });
+    musicBar&&musicBar.classList.remove('hide');
+    if(musicNowEl){
+      musicNowEl.textContent=`♫ ${item.title}`;
+      musicNowEl.title=`áudio criado por ${item.byName}, pesquisando ${item.topic}`;
+    }
+  }
   function startMusic(){
     if(!W||!W.songs||!W.songs.length){
       toast('ainda não há música. Abra “músicas” e espere as tribos comporem.');
@@ -792,6 +1045,34 @@ function initUI(){
         return `<div class="voteRow${win?' win':''}"><span class="vl">${(c.k||'').replace(/:/g,' · ')}</span><span class="vb"><i style="width:${Math.min(100,pct)}%"></i></span><span class="vn">${pct}</span></div>`;
       }).join('');
     }else h+='<span class="empty">ainda sem votos; o cérebro está acordando.</span>';
+    const graph=a.memoryGraph;
+    const edges=graph&&graph.edges?Object.values(graph.edges).slice().sort((p,q)=>(q.weight||0)-(p.weight||0)).slice(0,7):[];
+    if(edges.length){
+      const nodeIds=[...new Set(edges.flatMap(edge=>[edge.from,edge.to]))];
+      const nodes=nodeIds.map(id=>graph.nodes[id]).filter(Boolean);
+      const types=['thing','action','need'];
+      const labels={thing:'coisa',action:'ação',need:'resultado'};
+      const positions={};
+      let maxRows=1;
+      for(const type of types){
+        const group=nodes.filter(node=>node.type===type);
+        maxRows=Math.max(maxRows,group.length);
+        group.forEach((node,index)=>{positions[node.id]={x:14+types.indexOf(type)*106,y:36+index*32,node}});
+      }
+      const svgEscape=value=>String(value).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+      const height=48+maxRows*32;
+      const lines=edges.map(edge=>{
+        const from=positions[edge.from],to=positions[edge.to];
+        if(!from||!to)return '';
+        const alpha=Math.min(.85,.25+(edge.weight||0)/16),width=Math.min(3.5,1+(edge.weight||0)/5);
+        return `<line x1="${from.x+7}" y1="${from.y}" x2="${to.x+7}" y2="${to.y}" stroke-opacity="${alpha}" stroke-width="${width}"/>`;
+      }).join('');
+      const circles=types.map(type=>nodes.filter(node=>node.type===type).map(node=>{
+        const p=positions[node.id],label=svgEscape((node.label||node.id).slice(0,13));
+        return `<g class="mg-node"><title>${svgEscape(node.label||node.id)} · peso ${Math.round(node.weight||0)}</title><circle cx="${p.x+7}" cy="${p.y}" r="4"/><text x="${p.x+15}" y="${p.y+3}">${label}</text></g>`;
+      }).join('')).join('');
+      h+=`<div class="memoryGraph"><div class="mg-title">memória em grafo <span>${Object.keys(graph.edges).length} ligações · ${graph.consolidations||0} sonhos</span></div><svg viewBox="0 0 330 ${height}" role="img" aria-label="Grafo de memórias do animal"><text class="mg-col" x="14" y="12">${labels.thing}</text><text class="mg-col" x="120" y="12">${labels.action}</text><text class="mg-col" x="226" y="12">${labels.need}</text>${lines}${circles}</svg></div>`;
+    }else h+='<div class="memoryGraph empty">ainda está formando suas ligações de memória.</div>';
     const caps=[];
     const nTools=TOOL_KEYS.filter(k=>a.recipes&&a.recipes[k]).length;
     if(nTools)caps.push(`<span class="capchip gold">${nTools} ferramenta(s)</span>`);
@@ -856,6 +1137,7 @@ function initUI(){
       const words=[...new Set(mem.flatMap(a=>Object.keys(a.lex||{}).filter(k=>/^[kv]:/.test(k)).map(k=>a.lex[k])))];
       return `<div class="wcard tribeCard"><div class="whead"><span class="tname">${tr.name}</span><span class="wtag">cultura ${tr.culture?tr.culture.label:'?'}</span></div>
         <div class="wbody">${mem.length} falante(s) · ${words.length} palavra(s) em comum${tr.numerals?` · números: ${tr.numerals.join(' ')}`:''}</div>
+        ${tr.soundChanges?`<div class="wbody">Lei de Grimm: ${tr.soundChanges} mudança(s) sonora(s) · última no dia ${Math.floor((tr.lastSoundChange||0)/(W.dayLen||240))+1}</div>`:''}
         <div class="lwords">${words.slice(0,16).map(w=>`<span class="lw">${w}</span>`).join('')||'<span class="empty">silêncio</span>'}</div></div>`;
     }).join('');
     const groups=[];
@@ -878,7 +1160,10 @@ function initUI(){
         <div class="lwords">${[...common].slice(0,12).map(w=>`<span class="lw">${w}</span>`).join('')}</div>
         <div class="wbody">${grp.map(it=>it.a.name||it.a.sp.label.toLowerCase()).slice(0,10).join(' · ')}</div></div>`;
     }).join('');
+    const soundEvents=(W.langEvents||[]).filter(event=>event.type==='grimm').slice(-4).reverse();
+    const soundHistory=soundEvents.length?`<div class="wcard"><div class="whead">mudanças pela Lei de Grimm</div>${soundEvents.map(event=>`<div class="wbody">dia ${Math.floor((event.t||0)/(W.dayLen||240))+1} · ${event.aName}: ${event.changes}</div>`).join('')}</div>`:'';
     list.innerHTML=`<div class="wcard"><div class="wbody">${W.words.size} palavra(s) na floresta · ${(W.stats&&W.stats.mixes)||0} fusão(ões) de língua · ${(W.stats&&W.stats.songs)||0} música(s) composta(s).</div></div>`
+      +soundHistory
       +(trs||'<span class="empty">ainda não há tribo falando.</span>')+(shared?'<div class="dimtxt">idiomas que se entendem:</div>'+shared:'');
   }
   function renderRuins(){
@@ -921,7 +1206,7 @@ function initUI(){
         ${vote?`<div class="dimtxt">agora pensa em: ${(vote.k||'').replace(/:/g,' · ')} (${Math.round(Math.abs(vote.s||0)*100)})</div>`:''}
       </div>`;
     }).join('');
-    list.innerHTML=`<div class="wcard"><div class="whead">como a rede decide</div><div class="wbody">Cada bicho vota entre ideias: necessidade + memória + curiosidade + novidade. As notas viram pesos e ele sorteia uma (por isso erra e aprende). Os votos ao lado mostram a conta deste instante; no mundo, a rede aparece desenhada em cima do bicho selecionado.</div></div>`
+    list.innerHTML=`<div class="wcard"><div class="whead">como a rede decide</div><div class="wbody">Cada bicho compara até doze ideias: necessidades, memória, curiosidade, personalidade e valores próprios. A memória recente desestimula repetir escolhas sem necessidade; fome e sede urgentes continuam prioritárias. Os votos ao lado mostram a conta deste instante.</div></div>`
       +(rows||'<span class="empty">sem bichos.</span>');
   }
   function renderMusicList(){
@@ -985,7 +1270,10 @@ function initUI(){
     if(sel&&sel.opinion){
       const rr=Object.keys(sel.opinion).map(id=>({a:W.animals.find(x=>x.id===+id),v:sel.opinion[id].v,t:sel.opinion[id].t}))
         .filter(x=>x.a).sort((p,q)=>Math.abs(q.v)-Math.abs(p.v)).slice(0,6);
-      if(rr.length)rel=`<div class="relList">${rr.map(x=>`<div class="relRow"><span class="rn">${x.a.name||x.a.sp.label.toLowerCase()}</span><span class="rv ${x.v>=0?'f':'r'}">${x.v>=0?'gosta':'evita'} ${Math.round(Math.abs(x.v)*100)}%</span></div>`).join('')}</div>`;
+      if(rr.length)rel=`<div class="relList">${rr.map(x=>{
+        const label=x.v>.45?'amigo':x.v<-.45?'inimigo':x.v>=0?'simpatia':'desconfiança';
+        return `<div class="relRow"><span class="rn">${x.a.name||x.a.sp.label.toLowerCase()}</span><span class="rv ${x.v>=0?'f':'r'}">${label} · ${Math.round(Math.abs(x.v)*100)}%</span></div>`;
+      }).join('')}</div>`;
     }
     list.innerHTML=`<div class="wcard"><div class="whead"><span>bichos da floresta</span><span class="wtag"><b class="critCount">${W.animals.length}</b> / ${cap}</span></div>
       <div class="wbody">${spStr}</div>
@@ -1030,20 +1318,26 @@ function initUI(){
     select,
     refresh:()=>{if(!bound)return;updateCards();const a=animal();if(a){
       dSub.innerHTML=`<span>${statusOf(a)}</span><span>${Math.floor(a.age/60)<1?'recém-acordado':Math.floor(a.age/60)+' min de vida'}</span><span>${a.exp} experiências</span>`;
-      renderWish(a);renderSelf(a);renderMood(a);renderHands(a);renderIdeas(a);renderMem(a);renderInvent(a);renderLex(a);renderWeb(a);renderTools(a);renderTribe(a);renderActions(a);
+      renderWish(a);renderSelf(a);renderMood(a);renderHands(a);renderIdeas(a);renderMem(a);renderInvent(a);renderLex(a);renderWeb(a);renderTools(a);renderTribe(a);renderRelationships(a);renderActions(a);
       renderGear(a);renderMusic(a);renderMind(a);renderRuinsSel(a);
     }renderLangs();if(codexOpen)renderCodex();},
     onEvent:e=>{pushTicker(e)},
     onThought:(a,e)=>{if(a.id===selectedId)renderThoughts(a)},
     onLex:a=>{if(a.id===selectedId)renderLex(a);updateCards()},
-    onMem:a=>{if(a.id===selectedId)renderMem(a)},
+    onMem:a=>{if(a.id===selectedId){renderMem(a);renderMind(a)}},
+    onResearch:a=>{
+      if(a&&a.id===selectedId)renderWeb(a);
+      const active=codex.querySelector('#codexTabs button.on');
+      if(codexOpen&&active&&active.dataset.tab==='studies')renderStudies();
+      if(computerOpen)renderComputer(computerApp);
+    },
     onInvent:a=>{if(a.id===selectedId){renderInvent(a);renderTools(a)}},
     onWish:a=>{if(a.id===selectedId)renderWish(a)},
     onSelf:a=>{if(a.id===selectedId){renderSelf(a);renderActions(a)}},
     onTribe:tr=>{
       if(!bound)return;
       updateCards();const a=animal();
-      renderTribe(a);renderLangs();
+      renderTribe(a);renderRelationships(a);renderLangs();
       if(codexOpen)renderCodex();
     },
     onSong:song=>{
@@ -1061,7 +1355,8 @@ function initUI(){
       if(codexOpen)renderCodex();
     },
     onMural:kind=>{if(codexOpen&&kind===activeBoard)drawBoard(kind)},
-    openCodex,closeCodex,openGallery,
+    onComputer:()=>renderComputer(computerApp),
+    openCodex,closeCodex,openGallery,openComputer,closeComputer,
     clock:()=>{
       if(!W)return;
       dayLabel.textContent='Dia '+dayNum();

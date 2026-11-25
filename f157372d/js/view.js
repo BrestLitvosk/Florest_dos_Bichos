@@ -91,6 +91,10 @@ function initView(canvas){
   const colorTmp=new THREE.Color();
   function cellColor(c,out){
     const sh=.84+c.sh*.28;
+    if(c.st===5){
+      out.setRGB(.22+.08*sh,.46+.12*sh,.39+.1*sh);
+      return;
+    }
     if(c.st===4){if(c.bm===10)out.setRGB(.045,.15,.22);else out.setRGB(.05,.115,.10);return}
     if(c.st===1){const f=.72+Math.random()*.28;out.setRGB(.82*f,.33*f,.07*f);return}
     if(c.st===2){const v=.10+c.sh*.035;out.setRGB(v,v*.92,v*.78);return}
@@ -276,9 +280,9 @@ function initView(canvas){
     const x=c.getContext('2d');
     x.fillStyle='#07131b';x.fillRect(0,0,256,160);
     x.fillStyle='#0d2b3a';x.fillRect(0,0,256,22);
-    x.fillStyle='#8fe3c0';x.font='bold 12px Consolas, monospace';x.fillText('FLORESTA OS  v0.3',8,15);
+    x.fillStyle='#8fe3c0';x.font='bold 12px Consolas, monospace';x.fillText('FLORESTA OS · GOOGLE',8,15);
     x.font='10px Consolas, monospace';
-    const lines=['> bichos: 7','> bioma: floresta','> rio: online','> nomes: aprendendo','> invencoes: ...','> curiosidade: 87%'];
+    const lines=['> busca: animais online','> pesquisando: floresta','> audios: biblioteca','> galeria: aberta','> arquivos: do mundo','> curiosidade: 87%'];
     lines.forEach((s,i)=>{x.fillStyle=i===2?'#7cb6e8':'#6fbf95';x.fillText(s,10,42+i*15)});
     x.fillStyle='#0d2b3a';x.fillRect(8,132,120,14);
     x.fillStyle='#8fe3c0';x.fillRect(10,134,70,10);
@@ -475,6 +479,15 @@ function initView(canvas){
         }
         part(GEO.sphere,MAT.mudWet,.22,.07,.22,0,.03,0,g);
         break;}
+      case 'erva_marinha':{
+        const green=new THREE.MeshLambertMaterial({color:0x64a96c,side:THREE.DoubleSide});
+        for(let i=0;i<7;i++){
+          const a=i*TAU/7,h=.38+(i%3)*.12,x=Math.cos(a)*.09,z=Math.sin(a)*.09;
+          const leaf=part(GEO.sphere,green,.045,h*.55,.025,x,h*.52,z,g);
+          leaf.rotation.z=Math.cos(a)*.28;leaf.rotation.x=-Math.sin(a)*.28;
+        }
+        part(GEO.dode,MAT.seaStone,.13,.06,.13,0,.02,0,g);
+        break;}
       case 'coral':{
         const colors=[0xd8796f,0xe8a454,0x9274c8,0xd7c878];
         const coralMat=new THREE.MeshLambertMaterial({color:colors[(d.hue||0)%colors.length]});
@@ -487,6 +500,22 @@ function initView(canvas){
           if(i%2===0)for(const side of [-1,1]){
             const branch=part(GEO.cyl,coralMat,.033,.2,.033,x+Math.cos(a)*.06,.22+h*.48,z+Math.sin(a)*.06,g);
             branch.rotation.z=side*.45+Math.cos(a)*.4;branch.rotation.x=-Math.sin(a)*.4;
+          }
+        }
+        g.scale.setScalar(d.sc||1);
+        break;}
+      case 'arvore_coral':{
+        const colors=[0xd8796f,0xe8a454,0x9274c8,0xd7c878];
+        const coralMat=new THREE.MeshLambertMaterial({color:colors[(d.hue||0)%colors.length]});
+        part(GEO.dode,MAT.seaStone,.32,.16,.30,0,.08,0,g);
+        for(let i=0;i<6;i++){
+          const a=i*TAU/6,h=.85+(i%3)*.18,x=Math.cos(a)*.18,z=Math.sin(a)*.18;
+          const stem=part(GEO.cylTaper,coralMat,.10,h,.10,x,.1+h*.5,z,g);
+          stem.rotation.z=Math.cos(a)*.28;stem.rotation.x=-Math.sin(a)*.28;
+          part(GEO.sphere,coralMat,.105,.09,.105,x+Math.cos(a)*.08,.1+h,z+Math.sin(a)*.08,g);
+          for(const side of [-1,1]){
+            const branch=part(GEO.cylTaper,coralMat,.055,.34,.055,x+Math.cos(a)*.12,.25+h*.55,z+Math.sin(a)*.12,g);
+            branch.rotation.z=side*.58+Math.cos(a)*.38;branch.rotation.x=-Math.sin(a)*.38;
           }
         }
         g.scale.setScalar(d.sc||1);
@@ -805,6 +834,8 @@ function initView(canvas){
 
   /* ---------- animais ---------- */
   const animalViews=new Map();
+  const sharedAnimalMaterials=new Set(Object.values(MAT));
+  const sharedAnimalGeometries=new Set(Object.values(GEO));
   let selectedId=null;
   function buildAnimal(a){
     const g=grp();
@@ -1365,21 +1396,33 @@ function initView(canvas){
     }
     for(const k in armorMarks){armorMarks[k].visible=false;armor.add(armorMarks[k])}
     armor.visible=false;gear.add(armor);
+    const grip=grp();
+    part(GEO.sphere,bodyM,.12,.08,.12,0,0,0,grip);
+    for(const sx of [-1,1])part(GEO.sphere,lightM,.045,.045,.065,sx*.045,.005,.075,grip);
+    grip.position.set(.42,.42,.45);grip.visible=false;gear.add(grip);
     const spear=grp();
-    part(GEO.cyl,MAT.wood,.024,1.25,.024,0,.28,0,spear).rotation.z=.18;
-    part(GEO.cone,MAT.bronze,.05,.22,.05,0,.94,0,spear).rotation.z=.18;
-    spear.position.set(.6,.25,.18);spear.rotation.x=-.28;spear.visible=false;gear.add(spear);
+    part(GEO.cyl,MAT.wood,.033,.92,.033,0,.31,0,spear).rotation.z=.08;
+    part(GEO.cyl,MAT.stoneDark,.046,.09,.046,0,.69,0,spear);
+    part(GEO.cone,MAT.bronze,.065,.22,.065,0,.86,0,spear).rotation.z=.08;
+    spear.position.set(.42,.3,.45);spear.rotation.x=-.12;spear.visible=false;gear.add(spear);
     const axe=grp();
-    part(GEO.cyl,MAT.wood,.028,.5,.028,0,.25,0,axe).rotation.z=.35;
-    part(GEO.box,MAT.metal,.16,.1,.06,.16,.5,0,axe).rotation.z=.35;
-    axe.position.set(.55,.28,.2);axe.visible=false;gear.add(axe);
+    part(GEO.cyl,MAT.wood,.035,.58,.035,0,.29,0,axe).rotation.z=.12;
+    part(GEO.cyl,MAT.stoneDark,.052,.11,.052,0,.43,0,axe);
+    part(GEO.box,MAT.metal,.13,.2,.08,.13,.59,0,axe).rotation.z=-.12;
+    part(GEO.cone,MAT.metal,.11,.28,.06,.28,.59,0,axe).rotation.z=Math.PI/2;
+    axe.position.set(.42,.3,.45);axe.visible=false;gear.add(axe);
     const pick=grp();
-    part(GEO.cyl,MAT.wood,.028,.52,.028,0,.26,0,pick).rotation.z=.3;
-    part(GEO.cone,MAT.stoneDark,.09,.28,.07,.15,.54,0,pick).rotation.z=-1.2;
-    pick.position.set(.55,.28,.2);pick.visible=false;gear.add(pick);
+    part(GEO.cyl,MAT.wood,.035,.58,.035,0,.29,0,pick).rotation.z=.1;
+    part(GEO.cyl,MAT.stoneDark,.052,.11,.052,0,.43,0,pick);
+    part(GEO.box,MAT.stoneDark,.3,.11,.08,0,.58,0,pick);
+    for(const sx of [-1,1]){
+      const tip=part(GEO.cone,MAT.metal,.045,.2,.045,sx*.22,.58,0,pick);
+      tip.rotation.z=sx*Math.PI/2;
+    }
+    pick.position.set(.42,.3,.45);pick.visible=false;gear.add(pick);
     const ingot=grp();
-    part(GEO.box,MAT.bronze,.16,.06,.1,0,0,0,ingot);
-    ingot.position.set(.55,.35,.28);ingot.visible=false;gear.add(ingot);
+    part(GEO.box,MAT.bronze,.2,.1,.14,0,0,0,ingot);
+    ingot.position.set(.42,.42,.45);ingot.visible=false;gear.add(ingot);
     const gearItems={roupa:robe,armadura:armor,lanca:spear,machado:axe,picareta:pick,bronze:ingot};
     const gearRest={};
     for(const k of ['lanca','machado','picareta','bronze','armadura']){
@@ -1417,8 +1460,23 @@ function initView(canvas){
     g.userData.eyes=eyeParts;
     g.traverse(o=>{o.userData.animalId=a.id});
     animalsG.add(g);
-    animalViews.set(a.id,{g,ring,label,bubble,mind,gear,gearItems,gearRest,armorMarks,gearMats:{robeMat,armorMat},gearKey:'',nameCache:'',bubbleT:-1,mindT:-1,legs:gaitParts});
+    animalViews.set(a.id,{g,ring,label,bubble,mind,gear,gearItems,gearRest,grip,armorMarks,gearMats:{robeMat,armorMat},gearKey:'',nameCache:'',bubbleT:-1,mindT:-1,legs:gaitParts});
     return g;
+  }
+  function releaseAnimalView(v){
+    animalsG.remove(v.g);
+    const owned=new Set();
+    const geometries=new Set();
+    v.g.traverse(object=>{
+      if(object.geometry&&!sharedAnimalGeometries.has(object.geometry))geometries.add(object.geometry);
+      const materials=Array.isArray(object.material)?object.material:object.material?[object.material]:[];
+      for(const material of materials)if(material&&!sharedAnimalMaterials.has(material))owned.add(material);
+    });
+    for(const geometry of geometries)geometry.dispose();
+    for(const material of owned){
+      if(material.map&&material.map.dispose)material.map.dispose();
+      material.dispose();
+    }
   }
 
   /* ---------- retrato de cada espécie (para a lista) ---------- */
@@ -1735,6 +1793,24 @@ function initView(canvas){
 
   /* ---------- câmera / interação ---------- */
   const cam={az:.55,pitch:.6,dist:74,tx:0,ty:0,tz:0,look:new THREE.Vector3(0,0,0),follow:false};
+  const animalFrustum=new THREE.Frustum(),animalProjection=new THREE.Matrix4(),animalSphere=new THREE.Sphere(new THREE.Vector3(),2.6);
+  let animalSyncT=0;
+  function syncAnimalViews(force){
+    const now=performance.now();
+    if(!W||(!force&&animalSyncT&&now-animalSyncT<220))return;
+    animalSyncT=now;
+    camera.updateMatrixWorld(true);
+    animalFrustum.setFromProjectionMatrix(animalProjection.multiplyMatrices(camera.projectionMatrix,camera.matrixWorldInverse));
+    const range=Math.max(34,Math.min(110,cam.dist*1.35)),rangeSq=range*range;
+    for(const a of W.animals){
+      const dx=a.x-cam.look.x,dz=a.z-cam.look.z;
+      animalSphere.center.set(a.x,a.y+1,a.z);
+      const active=a.id===selectedId||((dx*dx+dz*dz)<rangeSq&&animalFrustum.intersectsSphere(animalSphere));
+      const view=animalViews.get(a.id);
+      if(active&&!view)buildAnimal(a);
+      else if(!active&&view){releaseAnimalView(view);animalViews.delete(a.id)}
+    }
+  }
   let dragging=false,panning=false,lastX=0,lastY=0,moved=0,downBtn=0;
   const activePointers=new Map();
   let pinchDist=0,pinchX=0,pinchY=0,pinchUsed=false;
@@ -1764,6 +1840,7 @@ function initView(canvas){
   }
   function selectAnimal(id){
     selectedId=id;
+    syncAnimalViews(true);
     for(const [aid,v] of animalViews)v.ring.visible=(aid===id);
     if(cam.follow&&id)cam.dist=Math.min(cam.dist,17);
   }
@@ -1798,7 +1875,7 @@ function initView(canvas){
     for(const h of hits){
       let o=h.object,th=null;
       while(o){if(o.userData&&o.userData.thing){th=o.userData.thing;break}o=o.parent}
-      if(th&&th.kind==='computador'){if(UI&&UI.openCodex)UI.openCodex('studies');return true}
+      if(th&&th.kind==='computador'){if(UI&&UI.openComputer)UI.openComputer();return true}
       if(th)return false;
     }
     return false;
@@ -1920,6 +1997,7 @@ function initView(canvas){
     v.gearKey=key;
     const held=new Set(a.hands||[]);
     for(const k of ['roupa','armadura','lanca','machado','picareta','bronze'])if(v.gearItems[k])v.gearItems[k].visible=held.has(k);
+    if(v.grip)v.grip.visible=['lanca','machado','picareta','bronze'].some(k=>held.has(k));
     const tr=a.tribeId&&W.tribes?W.tribes.find(t=>t.id===a.tribeId):null;
     const el=tr&&tr.culture&&tr.culture.element;
     const col=new THREE.Color(CULTURE_COL[el]||0x9a7048);
@@ -1934,9 +2012,13 @@ function initView(canvas){
     }
     if(!a.fighting)return null;
     const wolf=W.wolves.find(w=>w.id===a.fightWolfId&&w.state!=='down');
+    const opponent=!wolf&&a.fightOtherId?W.animals.find(b=>b.id===a.fightOtherId&&b.faint<=0):null;
+    if(a.fightOtherId&&!opponent)return null;
     if(wolf)g.rotation.y=Math.atan2(wolf.x-a.x,wolf.z-a.z);
+    else if(opponent)g.rotation.y=Math.atan2(opponent.x-a.x,opponent.z-a.z);
     const phase=(W.t*TAU/1.15+a.id*.41)%TAU;
     const swing=Math.max(0,Math.sin(phase));
+    if(v.legs)for(const leg of v.legs)leg.pivot.rotation.x=Math.sin(phase*1.4+leg.phase)*.2;
     const weapon=a.fightWeapon,item=v.gearItems[weapon],rest=v.gearRest[weapon];
     if(item&&rest){
       if(weapon==='lanca'){
@@ -2011,7 +2093,7 @@ function initView(canvas){
       const fightPhase=updateCombatPose(a,v,g);
       if(a.state==='sleep'){g.rotation.z+= (Math.PI*.42-g.rotation.z)*Math.min(1,dtReal*4);g.position.y-=.1}
       else if(a.state==='faint'){g.rotation.z+= (Math.PI*.48-g.rotation.z)*Math.min(1,dtReal*6)}
-      else if(fightPhase!=null){const lean=a.fightWeapon==='armadura'?.08:.035;g.rotation.z+=(Math.sin(fightPhase)*lean-g.rotation.z)*Math.min(1,dtReal*10)}
+      else if(fightPhase!=null){const lean=a.fightOtherId?.12:a.fightWeapon==='armadura'?.08:.035;g.rotation.z+=(Math.sin(fightPhase)*lean-g.rotation.z)*Math.min(1,dtReal*10)}
       else g.rotation.z*=Math.max(0,1-dtReal*6);
       // nome
       if(v.nameCache!==(a.name||'')){
@@ -2170,6 +2252,7 @@ function initView(canvas){
     camera.position.y+=(camY-camera.position.y)*Math.min(1,dtReal*5);
     camera.position.z+=(pz-camera.position.z)*Math.min(1,dtReal*5);
     camera.lookAt(cam.look);
+    syncAnimalViews(false);
     // água brilha
     const time=performance.now();
     waterG.children.forEach(m=>{
@@ -2194,14 +2277,14 @@ function initView(canvas){
     buildWater();
     paintAll();
     for(const t of liveThings())addThingView(t);
-    for(const a of W.animals)buildAnimal(a);
+    syncAnimalViews(true);
   }
   function clearWorld(){
     for(const [id,g] of thingViews){thingsG.remove(g)}
     thingViews.clear();
     for(const [id,L] of fireLights){L.parent&&L.parent.remove(L)}
     fireLights.clear();
-    for(const [id,v] of animalViews){animalsG.remove(v.g)}
+    for(const [id,v] of animalViews)releaseAnimalView(v);
     animalViews.clear();
     for(const [id,g] of wolfViews){wolvesG.remove(g)}
     wolfViews.clear();
@@ -2211,7 +2294,7 @@ function initView(canvas){
   const V={
     /* hooks da simulação */
     onAdd:t=>{if(W)addThingView(t)},
-    onAnimal:a=>{if(W&&a&&!animalViews.get(a.id))buildAnimal(a)},
+    onAnimal:()=>{animalSyncT=0},
     onRemove:t=>removeThingView(t),
     onChange:t=>{
       const g=thingViews.get(t.id);
